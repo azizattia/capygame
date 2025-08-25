@@ -6,14 +6,28 @@ class CapybaraGame {
         this.players = new Map();
         this.playerId = Math.random().toString(36).substr(2, 9);
         this.currentPlayer = null;
-        this.keys = {};
-        this.mobileControls = {};
         this.lobby = null;
         this.gameStarted = false;
         this.currentLevel = 1;
         this.maxLevel = 5;
         this.cheeseProjectiles = [];
         this.walls = [];
+        
+        // Drag movement variables
+        this.isDragging = false;
+        this.dragStartX = 0;
+        this.dragStartY = 0;
+        this.dragCurrentX = 0;
+        this.dragCurrentY = 0;
+        this.movementVector = { x: 0, y: 0 };
+        
+        // Cheese throwing variables
+        this.isThrowing = false;
+        this.throwStartX = 0;
+        this.throwStartY = 0;
+        this.throwCurrentX = 0;
+        this.throwCurrentY = 0;
+        this.throwVector = { x: 0, y: 0 };
         
         this.levels = {
             1: { name: "Open Field", walls: [] },
@@ -44,7 +58,7 @@ class CapybaraGame {
         this.ctx = this.canvas.getContext('2d');
         
         this.setupEventListeners();
-        this.setupMobileControls();
+        this.resizeCanvas();
         this.gameLoop();
     }
 
@@ -53,44 +67,175 @@ class CapybaraGame {
         document.getElementById('play-again-btn').addEventListener('click', () => this.resetGame());
         document.getElementById('next-level-btn').addEventListener('click', () => this.nextLevel());
 
-        document.addEventListener('keydown', (e) => {
-            this.keys[e.code] = true;
-        });
-
-        document.addEventListener('keyup', (e) => {
-            this.keys[e.code] = false;
-        });
+        // Mouse events for drag movement
+        this.canvas.addEventListener('mousedown', (e) => this.handleMouseDown(e));
+        this.canvas.addEventListener('mousemove', (e) => this.handleMouseMove(e));
+        this.canvas.addEventListener('mouseup', (e) => this.handleMouseUp(e));
+        
+        // Touch events for mobile
+        this.canvas.addEventListener('touchstart', (e) => this.handleTouchStart(e));
+        this.canvas.addEventListener('touchmove', (e) => this.handleTouchMove(e));
+        this.canvas.addEventListener('touchend', (e) => this.handleTouchEnd(e));
 
         window.addEventListener('resize', () => this.resizeCanvas());
-        this.resizeCanvas();
     }
 
-    setupMobileControls() {
-        const controls = ['move-left', 'move-right', 'move-up', 'move-down', 'throw-btn'];
+    handleMouseDown(e) {
+        if (this.gameState !== 'playing') return;
         
-        controls.forEach(control => {
-            const btn = document.getElementById(control);
-            
-            btn.addEventListener('touchstart', (e) => {
-                e.preventDefault();
-                this.mobileControls[control] = true;
-            });
-            
-            btn.addEventListener('touchend', (e) => {
-                e.preventDefault();
-                this.mobileControls[control] = false;
-            });
-            
-            btn.addEventListener('mousedown', (e) => {
-                e.preventDefault();
-                this.mobileControls[control] = true;
-            });
-            
-            btn.addEventListener('mouseup', (e) => {
-                e.preventDefault();
-                this.mobileControls[control] = false;
-            });
-        });
+        const rect = this.canvas.getBoundingClientRect();
+        const x = e.clientX - rect.left;
+        const y = e.clientY - rect.top;
+        
+        // Check if click is in left half (movement area)
+        if (x < this.canvas.width / 2) {
+            this.startMovementDrag(x, y);
+        } else {
+            // Right half is for cheese throwing
+            this.startThrowDrag(x, y);
+        }
+    }
+
+    handleMouseMove(e) {
+        if (this.gameState !== 'playing') return;
+        
+        const rect = this.canvas.getBoundingClientRect();
+        const x = e.clientX - rect.left;
+        const y = e.clientY - rect.top;
+        
+        if (this.isDragging) {
+            this.updateMovementDrag(x, y);
+        }
+        
+        if (this.isThrowing) {
+            this.updateThrowDrag(x, y);
+        }
+    }
+
+    handleMouseUp(e) {
+        if (this.gameState !== 'playing') return;
+        
+        if (this.isDragging) {
+            this.endMovementDrag();
+        }
+        
+        if (this.isThrowing) {
+            this.endThrowDrag();
+        }
+    }
+
+    handleTouchStart(e) {
+        e.preventDefault();
+        if (this.gameState !== 'playing') return;
+        
+        const touch = e.touches[0];
+        const rect = this.canvas.getBoundingClientRect();
+        const x = touch.clientX - rect.left;
+        const y = touch.clientY - rect.top;
+        
+        if (x < this.canvas.width / 2) {
+            this.startMovementDrag(x, y);
+        } else {
+            this.startThrowDrag(x, y);
+        }
+    }
+
+    handleTouchMove(e) {
+        e.preventDefault();
+        if (this.gameState !== 'playing') return;
+        
+        const touch = e.touches[0];
+        const rect = this.canvas.getBoundingClientRect();
+        const x = touch.clientX - rect.left;
+        const y = touch.clientY - rect.top;
+        
+        if (this.isDragging) {
+            this.updateMovementDrag(x, y);
+        }
+        
+        if (this.isThrowing) {
+            this.updateThrowDrag(x, y);
+        }
+    }
+
+    handleTouchEnd(e) {
+        e.preventDefault();
+        if (this.gameState !== 'playing') return;
+        
+        if (this.isDragging) {
+            this.endMovementDrag();
+        }
+        
+        if (this.isThrowing) {
+            this.endThrowDrag();
+        }
+    }
+
+    startMovementDrag(x, y) {
+        this.isDragging = true;
+        this.dragStartX = x;
+        this.dragStartY = y;
+        this.dragCurrentX = x;
+        this.dragCurrentY = y;
+    }
+
+    updateMovementDrag(x, y) {
+        this.dragCurrentX = x;
+        this.dragCurrentY = y;
+        
+        const dx = this.dragCurrentX - this.dragStartX;
+        const dy = this.dragCurrentY - this.dragStartY;
+        const distance = Math.sqrt(dx * dx + dy * dy);
+        
+        if (distance > 10) {
+            this.movementVector.x = dx / distance;
+            this.movementVector.y = dy / distance;
+        } else {
+            this.movementVector.x = 0;
+            this.movementVector.y = 0;
+        }
+    }
+
+    endMovementDrag() {
+        this.isDragging = false;
+        this.movementVector.x = 0;
+        this.movementVector.y = 0;
+    }
+
+    startThrowDrag(x, y) {
+        this.isThrowing = true;
+        this.throwStartX = x;
+        this.throwStartY = y;
+        this.throwCurrentX = x;
+        this.throwCurrentY = y;
+    }
+
+    updateThrowDrag(x, y) {
+        this.throwCurrentX = x;
+        this.throwCurrentY = y;
+        
+        const dx = this.throwCurrentX - this.throwStartX;
+        const dy = this.throwCurrentY - this.throwStartY;
+        const distance = Math.sqrt(dx * dx + dy * dy);
+        
+        if (distance > 5) {
+            this.throwVector.x = dx / distance;
+            this.throwVector.y = dy / distance;
+        } else {
+            this.throwVector.x = 0;
+            this.throwVector.y = 0;
+        }
+    }
+
+    endThrowDrag() {
+        if (this.currentPlayer && this.currentPlayer.throwCooldown <= 0 && 
+            (this.throwVector.x !== 0 || this.throwVector.y !== 0)) {
+            this.throwCheese(this.currentPlayer);
+        }
+        
+        this.isThrowing = false;
+        this.throwVector.x = 0;
+        this.throwVector.y = 0;
     }
 
     resizeCanvas() {
@@ -177,15 +322,13 @@ class CapybaraGame {
         this.lobby.players.set(this.playerId, this.currentPlayer);
         this.cheeseProjectiles = [];
         
-        setTimeout(() => {
-            if (this.lobby.players.size < 2) {
-                this.createBotPlayer();
-            }
+        // Only start when 2 real players join
+        if (this.lobby.players.size === 2) {
             this.startGamePlay();
-        }, 2000);
-        
-        document.getElementById('waiting-message').style.display = 'block';
-        document.getElementById('lobby-full-message').style.display = 'none';
+        } else {
+            document.getElementById('waiting-message').style.display = 'block';
+            document.getElementById('lobby-full-message').style.display = 'none';
+        }
     }
 
     checkLobbySpace() {
@@ -196,31 +339,6 @@ class CapybaraGame {
                 this.checkLobbySpace();
             }, 1000);
         }
-    }
-
-    createBotPlayer() {
-        const botId = 'bot_player';
-        const spawnPoints = this.getSpawnPoints();
-        
-        const botPlayer = {
-            id: botId,
-            x: spawnPoints[1].x,
-            y: spawnPoints[1].y,
-            width: 50,
-            height: 50,
-            health: 10,
-            maxHealth: 10,
-            speed: 2,
-            facing: 'left',
-            throwCooldown: 0,
-            isBot: true,
-            botTimer: 0,
-            botTargetX: spawnPoints[1].x,
-            botTargetY: spawnPoints[1].y
-        };
-        
-        this.lobby.players.set(botId, botPlayer);
-        this.players.set(botId, botPlayer);
     }
 
     startGamePlay() {
@@ -241,7 +359,6 @@ class CapybaraGame {
         });
         
         this.updateCurrentPlayer();
-        this.updateBotPlayers();
         this.updateProjectiles();
         this.checkCollisions();
         this.checkGameEnd();
@@ -254,20 +371,22 @@ class CapybaraGame {
         let newX = player.x;
         let newY = player.y;
         
-        if (this.keys['KeyA'] || this.keys['ArrowLeft'] || this.mobileControls['move-left']) {
-            newX = Math.max(0, player.x - player.speed);
-            player.facing = 'left';
+        // Apply drag movement
+        if (this.movementVector.x !== 0 || this.movementVector.y !== 0) {
+            newX += this.movementVector.x * player.speed;
+            newY += this.movementVector.y * player.speed;
+            
+            // Update facing direction
+            if (this.movementVector.x > 0) {
+                player.facing = 'right';
+            } else if (this.movementVector.x < 0) {
+                player.facing = 'left';
+            }
         }
-        if (this.keys['KeyD'] || this.keys['ArrowRight'] || this.mobileControls['move-right']) {
-            newX = Math.min(this.canvas.width - player.width, player.x + player.speed);
-            player.facing = 'right';
-        }
-        if (this.keys['KeyW'] || this.keys['ArrowUp'] || this.mobileControls['move-up']) {
-            newY = Math.max(0, player.y - player.speed);
-        }
-        if (this.keys['KeyS'] || this.keys['ArrowDown'] || this.mobileControls['move-down']) {
-            newY = Math.min(this.canvas.height - player.height, player.y + player.speed);
-        }
+        
+        // Boundary and wall collision checks
+        newX = Math.max(0, Math.min(this.canvas.width - player.width, newX));
+        newY = Math.max(0, Math.min(this.canvas.height - player.height, newY));
         
         if (!this.isPointInWall(newX, player.y, player.width, player.height)) {
             player.x = newX;
@@ -275,90 +394,6 @@ class CapybaraGame {
         if (!this.isPointInWall(player.x, newY, player.width, player.height)) {
             player.y = newY;
         }
-        
-        if ((this.keys['Space'] || this.mobileControls['throw-btn']) && player.throwCooldown <= 0) {
-            this.throwCheese(player);
-        }
-    }
-
-    updateBotPlayers() {
-        this.players.forEach(player => {
-            if (!player.isBot) return;
-            
-            player.botTimer++;
-            
-            const target = this.currentPlayer;
-            if (!target) return;
-            
-            const dx = target.x - player.x;
-            const dy = target.y - player.y;
-            const distance = Math.sqrt(dx * dx + dy * dy);
-            
-            if (player.botTimer % 60 === 0) {
-                const hidingSpots = this.findHidingSpots();
-                if (hidingSpots.length > 0 && Math.random() < 0.3) {
-                    const spot = hidingSpots[Math.floor(Math.random() * hidingSpots.length)];
-                    player.botTargetX = spot.x;
-                    player.botTargetY = spot.y;
-                } else {
-                    player.botTargetX = target.x + (Math.random() - 0.5) * 200;
-                    player.botTargetY = target.y + (Math.random() - 0.5) * 200;
-                }
-            }
-            
-            const targetDx = player.botTargetX - player.x;
-            const targetDy = player.botTargetY - player.y;
-            
-            let newX = player.x;
-            let newY = player.y;
-            
-            if (Math.abs(targetDx) > 5) {
-                if (targetDx > 0) {
-                    newX += player.speed;
-                    player.facing = 'right';
-                } else {
-                    newX -= player.speed;
-                    player.facing = 'left';
-                }
-            }
-            
-            if (Math.abs(targetDy) > 5) {
-                if (targetDy > 0) {
-                    newY += player.speed;
-                } else {
-                    newY -= player.speed;
-                }
-            }
-            
-            if (!this.isPointInWall(newX, player.y, player.width, player.height)) {
-                player.x = Math.max(0, Math.min(this.canvas.width - player.width, newX));
-            }
-            if (!this.isPointInWall(player.x, newY, player.width, player.height)) {
-                player.y = Math.max(0, Math.min(this.canvas.height - player.height, newY));
-            }
-            
-            if (distance < 200 && player.throwCooldown <= 0 && Math.random() < 0.02) {
-                this.throwCheese(player);
-            }
-        });
-    }
-
-    findHidingSpots() {
-        const spots = [];
-        this.walls.forEach(wall => {
-            spots.push(
-                { x: wall.x - 60, y: wall.y },
-                { x: wall.x + wall.width + 10, y: wall.y },
-                { x: wall.x, y: wall.y - 60 },
-                { x: wall.x, y: wall.y + wall.height + 10 }
-            );
-        });
-        
-        return spots.filter(spot => 
-            spot.x >= 0 && spot.x <= this.canvas.width - 50 &&
-            spot.y >= 0 && spot.y <= this.canvas.height - 50 &&
-            !this.isPointInWall(spot.x, spot.y, 50, 50)
-        );
     }
 
     throwCheese(player) {
@@ -370,8 +405,8 @@ class CapybaraGame {
             width: 12,
             height: 12,
             speed: 6,
-            dx: player.facing === 'right' ? 1 : -1,
-            dy: 0,
+            dx: this.throwVector.x,
+            dy: this.throwVector.y,
             owner: player.id,
             life: 120
         };
@@ -449,17 +484,15 @@ class CapybaraGame {
         const alivePlayers = Array.from(this.players.values()).filter(p => p.health > 0);
         
         if (alivePlayers.length <= 1 && this.gameStarted) {
-            this.endRound(alivePlayers.length > 0 ? null : alivePlayers[0]);
+            this.endRound(alivePlayers.length > 0 ? alivePlayers[0] : null);
         }
     }
 
-    endRound(loser) {
+    endRound(winner) {
         this.gameState = 'roundOver';
         this.gameStarted = false;
         
-        const winner = Array.from(this.players.values()).find(p => p.health > 0);
-        
-        if (winner && !winner.isBot) {
+        if (winner && winner.id === this.playerId) {
             if (this.currentLevel < this.maxLevel) {
                 document.getElementById('level-complete-text').textContent = 
                     `Level ${this.currentLevel} Complete!`;
@@ -529,6 +562,54 @@ class CapybaraGame {
         this.cheeseProjectiles.forEach(cheese => {
             this.drawCheese(cheese);
         });
+        
+        // Draw drag indicators
+        this.drawDragIndicators();
+    }
+
+    drawDragIndicators() {
+        if (this.gameState !== 'playing') return;
+        
+        // Draw movement area indicator (left half)
+        this.ctx.strokeStyle = 'rgba(0, 255, 0, 0.3)';
+        this.ctx.lineWidth = 2;
+        this.ctx.strokeRect(0, 0, this.canvas.width / 2, this.canvas.height);
+        
+        // Draw throw area indicator (right half)
+        this.ctx.strokeStyle = 'rgba(255, 165, 0, 0.3)';
+        this.ctx.strokeRect(this.canvas.width / 2, 0, this.canvas.width / 2, this.canvas.height);
+        
+        // Draw movement drag indicator
+        if (this.isDragging) {
+            this.ctx.strokeStyle = 'rgba(0, 255, 0, 0.8)';
+            this.ctx.lineWidth = 3;
+            this.ctx.beginPath();
+            this.ctx.moveTo(this.dragStartX, this.dragStartY);
+            this.ctx.lineTo(this.dragCurrentX, this.dragCurrentY);
+            this.ctx.stroke();
+            
+            // Draw movement circle
+            this.ctx.fillStyle = 'rgba(0, 255, 0, 0.2)';
+            this.ctx.beginPath();
+            this.ctx.arc(this.dragStartX, this.dragStartY, 30, 0, Math.PI * 2);
+            this.ctx.fill();
+        }
+        
+        // Draw throw drag indicator
+        if (this.isThrowing) {
+            this.ctx.strokeStyle = 'rgba(255, 165, 0, 0.8)';
+            this.ctx.lineWidth = 3;
+            this.ctx.beginPath();
+            this.ctx.moveTo(this.throwStartX, this.throwStartY);
+            this.ctx.lineTo(this.throwCurrentX, this.throwCurrentY);
+            this.ctx.stroke();
+            
+            // Draw throw circle
+            this.ctx.fillStyle = 'rgba(255, 165, 0, 0.2)';
+            this.ctx.beginPath();
+            this.ctx.arc(this.throwStartX, this.throwStartY, 20, 0, Math.PI * 2);
+            this.ctx.fill();
+        }
     }
 
     drawWalls() {

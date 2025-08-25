@@ -145,59 +145,24 @@ body {
     max-height: calc(100vh - 200px);
 }
 
-#mobile-controls {
+#game-instructions {
     position: absolute;
     bottom: 20px;
-    left: 20px;
-    right: 20px;
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
+    left: 50%;
+    transform: translateX(-50%);
+    background: rgba(255, 255, 255, 0.9);
+    padding: 15px 25px;
+    border-radius: 15px;
+    box-shadow: 0 3px 10px rgba(0, 0, 0, 0.2);
+    text-align: center;
     z-index: 10;
 }
 
-.control-pad {
-    display: grid;
-    grid-template-columns: repeat(3, 1fr);
-    grid-template-rows: repeat(3, 1fr);
-    gap: 5px;
-    width: 120px;
-    height: 120px;
-}
-
-.control-btn {
-    background: rgba(255, 182, 193, 0.9);
-    border: 2px solid #FF69B4;
-    border-radius: 10px;
-    font-size: 1.2rem;
+#game-instructions p {
+    font-size: 1.1rem;
+    color: #666;
+    margin: 0;
     font-weight: bold;
-    color: #FF1493;
-    cursor: pointer;
-    transition: all 0.2s ease;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    user-select: none;
-}
-
-#move-up { grid-column: 2; grid-row: 1; }
-#move-left { grid-column: 1; grid-row: 2; }
-#move-right { grid-column: 3; grid-row: 2; }
-#move-down { grid-column: 2; grid-row: 3; }
-
-.attack-btn {
-    width: 80px;
-    height: 80px;
-    border-radius: 50%;
-    font-size: 2rem;
-    background: linear-gradient(45deg, #FF6347, #FF4500);
-    color: white;
-    border: 3px solid #DC143C;
-}
-
-.control-btn:active {
-    transform: scale(0.95);
-    background: rgba(255, 105, 180, 0.7);
 }
 
 #level-complete, #game-over {
@@ -262,18 +227,7 @@ body {
         padding: 12px 25px;
     }
     
-    .control-pad {
-        width: 100px;
-        height: 100px;
-    }
-    
-    .control-btn {
-        font-size: 1rem;
-    }
-    
-    .attack-btn {
-        width: 60px;
-        height: 60px;
-        font-size: 1.5rem;
+    #game-instructions p {
+        font-size: 0.9rem;
     }
 }
