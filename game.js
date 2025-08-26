@@ -1052,7 +1052,7 @@ class CapybaraGame {
         let moved = false;
         
         // Apply drag movement with FORCED equal speed for LOCAL PLAYER ONLY
-        if (this.movementVector.x !== 0 || this.movementVector.y !== 0 && player.isLocal) {
+        if ((this.movementVector.x !== 0 || this.movementVector.y !== 0) && player.isLocal) {
             // MUCH SLOWER speed to match network lag of remote players
             const forceEqualSpeed = 1.2; // REDUCED from 2 to match remote player speed
             newX += this.movementVector.x * forceEqualSpeed;
