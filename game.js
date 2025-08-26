@@ -459,8 +459,8 @@ class CapybaraGame {
             this.moveJoystick.x = x;
             this.moveJoystick.y = y;
             
-            // Smoother movement with better responsiveness
-            const sensitivity = 2.5;
+            // FORCE SAME sensitivity for all players
+            const sensitivity = 1.5; // REDUCED from 2.5 to slow down lobby creator
             this.movementVector.x = x * sensitivity;
             this.movementVector.y = y * sensitivity;
             
@@ -912,7 +912,7 @@ class CapybaraGame {
     }
 
     addRemotePlayer(playerData) {
-        const spawnPoints = this.getSpawnPoints();
+        console.log('Adding remote player with data:', playerData);
         
         const remotePlayer = {
             id: playerData.id,
@@ -941,12 +941,26 @@ class CapybaraGame {
     }
     
     updateRemotePlayer(playerData) {
-        const player = this.players.get(playerData.id);
+        const player = this.players.get(playerData.id || playerData.player?.id);
         if (player && !player.isLocal) {
-            player.x = playerData.x;
-            player.y = playerData.y;
-            player.health = playerData.health;
-            player.facing = playerData.facing;
+            // Smooth position updates to prevent teleporting
+            const newX = playerData.x || playerData.player?.x;
+            const newY = playerData.y || playerData.player?.y;
+            
+            // Don't allow teleportation - only allow reasonable movement distances
+            const maxMovement = 20; // Max pixels per update
+            const dx = Math.abs(newX - player.x);
+            const dy = Math.abs(newY - player.y);
+            
+            if (dx < maxMovement && dy < maxMovement) {
+                player.x = newX;
+                player.y = newY;
+            } else {
+                console.log(`Prevented teleportation for ${player.id}: (${dx}, ${dy})`);
+            }
+            
+            player.health = playerData.health || playerData.player?.health;
+            player.facing = playerData.facing || playerData.player?.facing;
             this.updateHealthUI();
         }
     }
@@ -1037,15 +1051,15 @@ class CapybaraGame {
         let newY = player.y;
         let moved = false;
         
-        // Apply drag movement with FORCED equal speed
-        if (this.movementVector.x !== 0 || this.movementVector.y !== 0) {
-            // FORCE same speed for all players - ignore player.speed completely
-            const forceEqualSpeed = 2;
+        // Apply drag movement with FORCED equal speed for LOCAL PLAYER ONLY
+        if (this.movementVector.x !== 0 || this.movementVector.y !== 0 && player.isLocal) {
+            // MUCH SLOWER speed to match network lag of remote players
+            const forceEqualSpeed = 1.2; // REDUCED from 2 to match remote player speed
             newX += this.movementVector.x * forceEqualSpeed;
             newY += this.movementVector.y * forceEqualSpeed;
             moved = true;
             
-            console.log(`Player ${player.id} moving with forced speed: ${forceEqualSpeed}`);
+            console.log(`LOCAL Player ${player.id} moving with forced speed: ${forceEqualSpeed}`);
             
             // Update facing direction
             if (this.movementVector.x > 0) {
@@ -1053,6 +1067,11 @@ class CapybaraGame {
             } else if (this.movementVector.x < 0) {
                 player.facing = 'left';
             }
+        }
+        
+        // For remote players, don't process movement here (it comes from network)
+        if (!player.isLocal) {
+            return; // Remote player movement handled by updateRemotePlayer
         }
         
         // Boundary and wall collision checks

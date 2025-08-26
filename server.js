@@ -78,7 +78,12 @@ io.on('connection', (socket) => {
 
     socket.to(roomId).emit('player_joined', {
       playerId: playerData.id,
-      player: playerData
+      player: {
+        ...playerData,
+        // Force bottom-right spawn for second player
+        x: 750, // Bottom-right x
+        y: 550  // Bottom-right y
+      }
     });
 
     socket.emit('room_joined', {
