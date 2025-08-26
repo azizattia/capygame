@@ -15,6 +15,13 @@ class CapybaraGame {
         this.isHost = false;
         this.localPlayers = [];
         
+        // WebSocket connection for multiplayer
+        this.ws = null;
+        this.wsUrl = 'wss://socketsbay.com/wss/v2/1/' + this.gameRoom + '/';
+        this.isConnected = false;
+        this.connectionAttempts = 0;
+        this.maxConnectionAttempts = 3;
+        
         // Drag movement variables
         this.isDragging = false;
         this.dragStartX = 0;
@@ -30,6 +37,11 @@ class CapybaraGame {
         this.throwCurrentX = 0;
         this.throwCurrentY = 0;
         this.throwVector = { x: 0, y: 0 };
+        
+        // Multi-touch support
+        this.activeTouches = new Map();
+        this.movementTouchId = null;
+        this.throwTouchId = null;
         
         this.levels = {
             1: { name: "Open Field", walls: [] },
@@ -80,12 +92,18 @@ class CapybaraGame {
         this.canvas.addEventListener('mousemove', (e) => this.handleMouseMove(e));
         this.canvas.addEventListener('mouseup', (e) => this.handleMouseUp(e));
         
-        // Touch events for mobile
+        // Touch events for mobile - support multi-touch
         this.canvas.addEventListener('touchstart', (e) => this.handleTouchStart(e));
         this.canvas.addEventListener('touchmove', (e) => this.handleTouchMove(e));
         this.canvas.addEventListener('touchend', (e) => this.handleTouchEnd(e));
+        
+        // Prevent default touch behaviors
+        this.canvas.addEventListener('touchstart', (e) => e.preventDefault());
+        this.canvas.addEventListener('touchmove', (e) => e.preventDefault());
+        this.canvas.addEventListener('touchend', (e) => e.preventDefault());
 
         window.addEventListener('resize', () => this.resizeCanvas());
+        window.addEventListener('beforeunload', () => this.handlePageUnload());
     }
 
     handleMouseDown(e) {
@@ -136,15 +154,25 @@ class CapybaraGame {
         e.preventDefault();
         if (this.gameState !== 'playing') return;
         
-        const touch = e.touches[0];
         const rect = this.canvas.getBoundingClientRect();
-        const x = touch.clientX - rect.left;
-        const y = touch.clientY - rect.top;
         
-        if (x < this.canvas.width / 2) {
-            this.startMovementDrag(x, y);
-        } else {
-            this.startThrowDrag(x, y);
+        // Handle all new touches
+        for (let i = 0; i < e.changedTouches.length; i++) {
+            const touch = e.changedTouches[i];
+            const x = touch.clientX - rect.left;
+            const y = touch.clientY - rect.top;
+            
+            // Store touch info
+            this.activeTouches.set(touch.identifier, { x, y, startX: x, startY: y });
+            
+            // Determine if it's movement (left half) or throwing (right half)
+            if (x < this.canvas.width / 2 && this.movementTouchId === null) {
+                this.movementTouchId = touch.identifier;
+                this.startMovementDrag(x, y);
+            } else if (x >= this.canvas.width / 2 && this.throwTouchId === null) {
+                this.throwTouchId = touch.identifier;
+                this.startThrowDrag(x, y);
+            }
         }
     }
 
@@ -152,17 +180,30 @@ class CapybaraGame {
         e.preventDefault();
         if (this.gameState !== 'playing') return;
         
-        const touch = e.touches[0];
         const rect = this.canvas.getBoundingClientRect();
-        const x = touch.clientX - rect.left;
-        const y = touch.clientY - rect.top;
         
-        if (this.isDragging) {
-            this.updateMovementDrag(x, y);
-        }
-        
-        if (this.isThrowing) {
-            this.updateThrowDrag(x, y);
+        // Handle all moving touches
+        for (let i = 0; i < e.changedTouches.length; i++) {
+            const touch = e.changedTouches[i];
+            const x = touch.clientX - rect.left;
+            const y = touch.clientY - rect.top;
+            
+            // Update stored touch info
+            if (this.activeTouches.has(touch.identifier)) {
+                const touchInfo = this.activeTouches.get(touch.identifier);
+                touchInfo.x = x;
+                touchInfo.y = y;
+                
+                // Handle movement touch
+                if (touch.identifier === this.movementTouchId && this.isDragging) {
+                    this.updateMovementDrag(x, y);
+                }
+                
+                // Handle throw touch
+                if (touch.identifier === this.throwTouchId && this.isThrowing) {
+                    this.updateThrowDrag(x, y);
+                }
+            }
         }
     }
 
@@ -170,12 +211,28 @@ class CapybaraGame {
         e.preventDefault();
         if (this.gameState !== 'playing') return;
         
-        if (this.isDragging) {
-            this.endMovementDrag();
-        }
-        
-        if (this.isThrowing) {
-            this.endThrowDrag();
+        // Handle all ended touches
+        for (let i = 0; i < e.changedTouches.length; i++) {
+            const touch = e.changedTouches[i];
+            
+            // Remove from active touches
+            this.activeTouches.delete(touch.identifier);
+            
+            // End movement if this was the movement touch
+            if (touch.identifier === this.movementTouchId) {
+                this.movementTouchId = null;
+                if (this.isDragging) {
+                    this.endMovementDrag();
+                }
+            }
+            
+            // End throwing if this was the throw touch
+            if (touch.identifier === this.throwTouchId) {
+                this.throwTouchId = null;
+                if (this.isThrowing) {
+                    this.endThrowDrag();
+                }
+            }
         }
     }
 
@@ -310,17 +367,168 @@ class CapybaraGame {
     }
 
     joinLobby() {
-        // Check if we have enough players to start
-        const totalPlayers = this.players.size + this.localPlayers.length;
+        // Connect to WebSocket for multiplayer
+        this.connectToWebSocket();
+    }
+    
+    connectToWebSocket() {
+        if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+            return;
+        }
         
-        if (totalPlayers >= 2) {
-            this.startGamePlay();
-        } else {
-            document.getElementById('waiting-message').style.display = 'block';
-            document.getElementById('lobby-full-message').style.display = 'none';
+        document.getElementById('waiting-message').innerHTML = 'Connecting to multiplayer...';
+        document.getElementById('waiting-message').style.display = 'block';
+        
+        try {
+            this.ws = new WebSocket(this.wsUrl);
             
-            // Show room code for sharing
-            this.showRoomCode();
+            this.ws.onopen = () => {
+                console.log('Connected to multiplayer server');
+                this.isConnected = true;
+                this.connectionAttempts = 0;
+                
+                // Send player join message
+                this.sendMessage({
+                    type: 'player_join',
+                    playerId: this.playerId,
+                    player: {
+                        id: this.playerId,
+                        x: this.currentPlayer.x,
+                        y: this.currentPlayer.y,
+                        health: this.currentPlayer.health,
+                        maxHealth: this.currentPlayer.maxHealth,
+                        facing: this.currentPlayer.facing
+                    }
+                });
+                
+                this.showRoomCode();
+            };
+            
+            this.ws.onmessage = (event) => {
+                try {
+                    const message = JSON.parse(event.data);
+                    this.handleWebSocketMessage(message);
+                } catch (error) {
+                    console.log('Received non-JSON message:', event.data);
+                }
+            };
+            
+            this.ws.onclose = () => {
+                console.log('Disconnected from multiplayer server');
+                this.isConnected = false;
+                
+                if (this.connectionAttempts < this.maxConnectionAttempts) {
+                    this.connectionAttempts++;
+                    setTimeout(() => {
+                        console.log(`Reconnection attempt ${this.connectionAttempts}`);
+                        this.connectToWebSocket();
+                    }, 2000);
+                } else {
+                    document.getElementById('waiting-message').innerHTML = 'Connection failed. Click "Add AI Player" to play offline.';
+                }
+            };
+            
+            this.ws.onerror = (error) => {
+                console.log('WebSocket error:', error);
+            };
+            
+        } catch (error) {
+            console.log('WebSocket connection error:', error);
+            document.getElementById('waiting-message').innerHTML = 'Connection failed. Click "Add AI Player" to play offline.';
+        }
+    }
+    
+    sendMessage(message) {
+        if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+            this.ws.send(JSON.stringify(message));
+        }
+    }
+    
+    handleWebSocketMessage(message) {
+        switch (message.type) {
+            case 'player_join':
+                if (message.playerId !== this.playerId) {
+                    this.addRemotePlayer(message.player);
+                }
+                break;
+                
+            case 'player_update':
+                if (message.playerId !== this.playerId) {
+                    this.updateRemotePlayer(message.player);
+                }
+                break;
+                
+            case 'player_leave':
+                if (message.playerId !== this.playerId) {
+                    this.removeRemotePlayer(message.playerId);
+                }
+                break;
+                
+            case 'cheese_throw':
+                if (message.playerId !== this.playerId) {
+                    this.addRemoteCheese(message.cheese);
+                }
+                break;
+                
+            case 'game_start':
+                this.startGamePlay();
+                break;
+        }
+    }
+    
+    addRemotePlayer(playerData) {
+        const remotePlayer = {
+            id: playerData.id,
+            x: playerData.x,
+            y: playerData.y,
+            width: 50,
+            height: 50,
+            health: playerData.health,
+            maxHealth: playerData.maxHealth,
+            speed: 3,
+            facing: playerData.facing,
+            throwCooldown: 0,
+            isLocal: false
+        };
+        
+        this.players.set(playerData.id, remotePlayer);
+        
+        // Check if we have enough players to start
+        if (this.players.size >= 2 && !this.gameStarted) {
+            this.sendMessage({ type: 'game_start' });
+            this.startGamePlay();
+        }
+        
+        this.updateHealthUI();
+    }
+    
+    updateRemotePlayer(playerData) {
+        const player = this.players.get(playerData.id);
+        if (player && !player.isLocal) {
+            player.x = playerData.x;
+            player.y = playerData.y;
+            player.health = playerData.health;
+            player.facing = playerData.facing;
+            this.updateHealthUI();
+        }
+    }
+    
+    removeRemotePlayer(playerId) {
+        this.players.delete(playerId);
+        this.updateHealthUI();
+    }
+    
+    addRemoteCheese(cheeseData) {
+        this.cheeseProjectiles.push(cheeseData);
+    }
+    
+    // Handle page unload to notify other players
+    handlePageUnload() {
+        if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+            this.sendMessage({
+                type: 'player_leave',
+                playerId: this.playerId
+            });
         }
     }
 
@@ -404,11 +612,13 @@ class CapybaraGame {
         const player = this.currentPlayer;
         let newX = player.x;
         let newY = player.y;
+        let moved = false;
         
         // Apply drag movement
         if (this.movementVector.x !== 0 || this.movementVector.y !== 0) {
             newX += this.movementVector.x * player.speed;
             newY += this.movementVector.y * player.speed;
+            moved = true;
             
             // Update facing direction
             if (this.movementVector.x > 0) {
@@ -427,6 +637,21 @@ class CapybaraGame {
         }
         if (!this.isPointInWall(player.x, newY, player.width, player.height)) {
             player.y = newY;
+        }
+        
+        // Send player update to other players if moved
+        if (moved && this.isConnected) {
+            this.sendMessage({
+                type: 'player_update',
+                playerId: this.playerId,
+                player: {
+                    id: player.id,
+                    x: player.x,
+                    y: player.y,
+                    health: player.health,
+                    facing: player.facing
+                }
+            });
         }
     }
 
@@ -534,6 +759,15 @@ class CapybaraGame {
         };
         
         this.cheeseProjectiles.push(cheese);
+        
+        // Send cheese throw to other players
+        if (this.isConnected) {
+            this.sendMessage({
+                type: 'cheese_throw',
+                playerId: this.playerId,
+                cheese: cheese
+            });
+        }
     }
 
     updateProjectiles() {
@@ -656,10 +890,18 @@ class CapybaraGame {
         this.currentLevel = 1;
         this.cheeseProjectiles = [];
         
+        // Close WebSocket connection
+        if (this.ws) {
+            this.ws.close();
+            this.ws = null;
+        }
+        this.isConnected = false;
+        
         document.getElementById('game-over').style.display = 'none';
         document.getElementById('level-complete').style.display = 'none';
         document.getElementById('game-container').style.display = 'none';
         document.getElementById('main-menu').style.display = 'block';
+        document.getElementById('add-player-btn').style.display = 'block';
     }
 
     render() {
@@ -692,46 +934,160 @@ class CapybaraGame {
     drawDragIndicators() {
         if (this.gameState !== 'playing') return;
         
-        // Draw movement area indicator (left half)
-        this.ctx.strokeStyle = 'rgba(0, 255, 0, 0.3)';
-        this.ctx.lineWidth = 2;
-        this.ctx.strokeRect(0, 0, this.canvas.width / 2, this.canvas.height);
-        
-        // Draw throw area indicator (right half)
-        this.ctx.strokeStyle = 'rgba(255, 165, 0, 0.3)';
-        this.ctx.strokeRect(this.canvas.width / 2, 0, this.canvas.width / 2, this.canvas.height);
+        // Draw mobile control indicators like mobile RPG games
+        this.drawMobileControlAreas();
         
         // Draw movement drag indicator
         if (this.isDragging) {
-            this.ctx.strokeStyle = 'rgba(0, 255, 0, 0.8)';
-            this.ctx.lineWidth = 3;
-            this.ctx.beginPath();
-            this.ctx.moveTo(this.dragStartX, this.dragStartY);
-            this.ctx.lineTo(this.dragCurrentX, this.dragCurrentY);
-            this.ctx.stroke();
-            
-            // Draw movement circle
-            this.ctx.fillStyle = 'rgba(0, 255, 0, 0.2)';
-            this.ctx.beginPath();
-            this.ctx.arc(this.dragStartX, this.dragStartY, 30, 0, Math.PI * 2);
-            this.ctx.fill();
+            this.drawMovementJoystick();
         }
         
         // Draw throw drag indicator
         if (this.isThrowing) {
-            this.ctx.strokeStyle = 'rgba(255, 165, 0, 0.8)';
-            this.ctx.lineWidth = 3;
+            this.drawThrowIndicator();
+        }
+    }
+    
+    drawMobileControlAreas() {
+        // Only show on touch devices or small screens
+        if (window.innerWidth > 768 && !('ontouchstart' in window)) return;
+        
+        // Draw movement control area (left side)
+        this.ctx.save();
+        this.ctx.fillStyle = 'rgba(0, 150, 255, 0.1)';
+        this.ctx.fillRect(20, this.canvas.height - 120, 100, 100);
+        
+        this.ctx.strokeStyle = 'rgba(0, 150, 255, 0.4)';
+        this.ctx.lineWidth = 2;
+        this.ctx.beginPath();
+        this.ctx.arc(70, this.canvas.height - 70, 50, 0, Math.PI * 2);
+        this.ctx.stroke();
+        
+        // Draw inner circle
+        this.ctx.beginPath();
+        this.ctx.arc(70, this.canvas.height - 70, 15, 0, Math.PI * 2);
+        this.ctx.fillStyle = 'rgba(0, 150, 255, 0.3)';
+        this.ctx.fill();
+        
+        // Movement label
+        this.ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
+        this.ctx.font = '12px Arial';
+        this.ctx.textAlign = 'center';
+        this.ctx.fillText('MOVE', 70, this.canvas.height - 130);
+        
+        // Draw throw control area (right side)
+        this.ctx.fillStyle = 'rgba(255, 100, 0, 0.1)';
+        this.ctx.fillRect(this.canvas.width - 120, this.canvas.height - 120, 100, 100);
+        
+        this.ctx.strokeStyle = 'rgba(255, 100, 0, 0.4)';
+        this.ctx.lineWidth = 2;
+        this.ctx.beginPath();
+        this.ctx.arc(this.canvas.width - 70, this.canvas.height - 70, 50, 0, Math.PI * 2);
+        this.ctx.stroke();
+        
+        // Draw inner circle
+        this.ctx.beginPath();
+        this.ctx.arc(this.canvas.width - 70, this.canvas.height - 70, 15, 0, Math.PI * 2);
+        this.ctx.fillStyle = 'rgba(255, 100, 0, 0.3)';
+        this.ctx.fill();
+        
+        // Throw label
+        this.ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
+        this.ctx.fillText('AIM', this.canvas.width - 70, this.canvas.height - 130);
+        
+        this.ctx.restore();
+    }
+    
+    drawMovementJoystick() {
+        // Calculate joystick position
+        const dx = this.dragCurrentX - this.dragStartX;
+        const dy = this.dragCurrentY - this.dragStartY;
+        const distance = Math.sqrt(dx * dx + dy * dy);
+        const maxDistance = 50;
+        
+        let knobX = this.dragStartX;
+        let knobY = this.dragStartY;
+        
+        if (distance > 0) {
+            const limitedDistance = Math.min(distance, maxDistance);
+            knobX = this.dragStartX + (dx / distance) * limitedDistance;
+            knobY = this.dragStartY + (dy / distance) * limitedDistance;
+        }
+        
+        this.ctx.save();
+        
+        // Draw outer circle (background)
+        this.ctx.beginPath();
+        this.ctx.arc(this.dragStartX, this.dragStartY, maxDistance, 0, Math.PI * 2);
+        this.ctx.fillStyle = 'rgba(0, 150, 255, 0.2)';
+        this.ctx.fill();
+        this.ctx.strokeStyle = 'rgba(0, 150, 255, 0.6)';
+        this.ctx.lineWidth = 3;
+        this.ctx.stroke();
+        
+        // Draw knob (moving part)
+        this.ctx.beginPath();
+        this.ctx.arc(knobX, knobY, 20, 0, Math.PI * 2);
+        this.ctx.fillStyle = 'rgba(0, 150, 255, 0.8)';
+        this.ctx.fill();
+        this.ctx.strokeStyle = 'rgba(255, 255, 255, 0.9)';
+        this.ctx.lineWidth = 2;
+        this.ctx.stroke();
+        
+        this.ctx.restore();
+    }
+    
+    drawThrowIndicator() {
+        const dx = this.throwCurrentX - this.throwStartX;
+        const dy = this.throwCurrentY - this.throwStartY;
+        const distance = Math.sqrt(dx * dx + dy * dy);
+        
+        this.ctx.save();
+        
+        // Draw aim circle at touch point
+        this.ctx.beginPath();
+        this.ctx.arc(this.throwStartX, this.throwStartY, 30, 0, Math.PI * 2);
+        this.ctx.fillStyle = 'rgba(255, 100, 0, 0.2)';
+        this.ctx.fill();
+        this.ctx.strokeStyle = 'rgba(255, 100, 0, 0.6)';
+        this.ctx.lineWidth = 3;
+        this.ctx.stroke();
+        
+        // Draw trajectory line
+        if (distance > 5) {
+            this.ctx.strokeStyle = 'rgba(255, 200, 0, 0.8)';
+            this.ctx.lineWidth = 4;
             this.ctx.beginPath();
             this.ctx.moveTo(this.throwStartX, this.throwStartY);
-            this.ctx.lineTo(this.throwCurrentX, this.throwCurrentY);
+            
+            // Extend line to show trajectory
+            const maxLength = 150;
+            const actualLength = Math.min(distance * 2, maxLength);
+            const endX = this.throwStartX + (dx / distance) * actualLength;
+            const endY = this.throwStartY + (dy / distance) * actualLength;
+            
+            this.ctx.lineTo(endX, endY);
             this.ctx.stroke();
             
-            // Draw throw circle
-            this.ctx.fillStyle = 'rgba(255, 165, 0, 0.2)';
+            // Draw arrow head
+            const angle = Math.atan2(dy, dx);
             this.ctx.beginPath();
-            this.ctx.arc(this.throwStartX, this.throwStartY, 20, 0, Math.PI * 2);
-            this.ctx.fill();
+            this.ctx.moveTo(endX, endY);
+            this.ctx.lineTo(endX - 15 * Math.cos(angle - Math.PI / 6), endY - 15 * Math.sin(angle - Math.PI / 6));
+            this.ctx.moveTo(endX, endY);
+            this.ctx.lineTo(endX - 15 * Math.cos(angle + Math.PI / 6), endY - 15 * Math.sin(angle + Math.PI / 6));
+            this.ctx.stroke();
+            
+            // Draw power indicator
+            const power = Math.min(distance / 100, 1);
+            this.ctx.fillStyle = `rgba(255, ${255 - power * 155}, 0, 0.8)`;
+            this.ctx.fillRect(this.throwStartX - 30, this.throwStartY - 45, 60 * power, 6);
+            this.ctx.strokeStyle = 'rgba(255, 255, 255, 0.8)';
+            this.ctx.lineWidth = 1;
+            this.ctx.strokeRect(this.throwStartX - 30, this.throwStartY - 45, 60, 6);
         }
+        
+        this.ctx.restore();
     }
 
     drawWalls() {
