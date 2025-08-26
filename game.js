@@ -264,18 +264,44 @@ class CapybaraGame {
             input.style.webkitUserSelect = 'text';
             input.style.userSelect = 'text';
             input.style.touchAction = 'manipulation';
+            input.style.pointerEvents = 'auto';
             
-            // Focus handling for mobile
+            // Remove any blocking event handlers
             input.addEventListener('touchstart', (e) => {
                 e.stopPropagation();
+                console.log('Input touched:', inputId);
+            }, { passive: false });
+            
+            input.addEventListener('touchend', (e) => {
+                e.stopPropagation();
+                e.preventDefault();
+                
+                // Force focus and keyboard
+                console.log('Forcing focus on:', inputId);
+                input.focus();
+                input.click();
+                
+                // Additional iOS fix
+                setTimeout(() => {
+                    input.focus();
+                }, 100);
+            }, { passive: false });
+            
+            input.addEventListener('click', (e) => {
+                e.stopPropagation();
+                console.log('Input clicked:', inputId);
+                input.focus();
             });
             
             input.addEventListener('focus', (e) => {
+                console.log('Input focused:', inputId);
                 e.target.style.transform = 'scale(1.05)';
+                e.target.style.borderColor = '#FF69B4';
             });
             
             input.addEventListener('blur', (e) => {
                 e.target.style.transform = 'scale(1)';
+                e.target.style.borderColor = '#FFB6C1';
             });
         });
     }

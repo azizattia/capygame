@@ -128,6 +128,10 @@ input[type="text"] {
     min-height: 50px;
     min-width: 200px;
     margin: 10px;
+    pointer-events: auto;
+    z-index: 1000;
+    position: relative;
+    -webkit-tap-highlight-color: rgba(255, 105, 180, 0.3);
 }
 
 input[type="text"]:focus {
@@ -147,7 +151,20 @@ input[type="text"]:active {
         min-height: 60px;
         min-width: 250px;
         margin: 15px;
+        /* Force iOS to show keyboard */
+        -webkit-user-select: auto;
+        user-select: auto;
+        cursor: text;
     }
+}
+
+/* Input container styling */
+#join-room-section, #custom-room-section {
+    margin: 15px 0;
+    padding: 10px;
+    pointer-events: auto;
+    z-index: 999;
+    position: relative;
 }
 
 .play-button:hover {
