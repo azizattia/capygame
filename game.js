@@ -73,7 +73,11 @@ class CapybaraGame {
     }
 
     connectSocket() {
-        this.socket = io();
+        // Use different socket path for production (Vercel) vs local development
+        const socketPath = window.location.hostname === 'localhost' ? '/socket.io/' : '/api/socket';
+        this.socket = io({
+            path: socketPath
+        });
         
         this.socket.on('connect', () => {
             console.log('Connected to server');
