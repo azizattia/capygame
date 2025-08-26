@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Live Multiplayer Test</title>
+    <style>
+        body { font-family: Arial, sans-serif; padding: 20px; background: #f0f8ff; }
+        .status { padding: 10px; margin: 10px 0; border-radius: 5px; font-weight: bold; }
+        .success { background: #90EE90; color: #006400; }
+        .error { background: #FFB6C1; color: #8B0000; }
+        .info { background: #87CEEB; color: #000080; }
+        .log { background: white; padding: 15px; margin: 10px 0; border-radius: 8px; max-height: 300px; overflow-y: auto; border: 1px solid #ccc; }
+        button { padding: 12px 20px; margin: 8px; font-size: 16px; cursor: pointer; border: none; border-radius: 5px; background: #4CAF50; color: white; }
+        button:hover { background: #45a049; }
+        button:disabled { background: #cccccc; cursor: not-allowed; }
+        .controls { margin: 20px 0; }
+        input { padding: 8px; font-size: 14px; border: 1px solid #ccc; border-radius: 4px; }
+        .player-status { display: inline-block; margin: 10px; padding: 10px; background: white; border-radius: 5px; border: 1px solid #ddd; }
+        .game-area { display: none; margin: 20px 0; }
+    </style>
+</head>
+<body>
+    <h1>🚀 Live Multiplayer Test - Capybara Game</h1>
+    
+    <div class="controls">
+        <button onclick="connectToGame()" id="connectBtn">Connect to Game</button>
+        <button onclick="createTestRoom()" id="createBtn" disabled>Create Test Room</button>
+        <input type="text" id="roomInput" placeholder="Enter room code to join" maxlength="6">
+        <button onclick="joinTestRoom()" id="joinBtn" disabled>Join Room</button>
+        <button onclick="testMovement()" id="moveBtn" disabled>Test Movement</button>
+        <button onclick="testCheese()" id="cheeseBtn" disabled>Test Cheese</button>
+        <button onclick="disconnect()" id="disconnectBtn" disabled>Disconnect</button>
+    </div>
+
+    <div class="game-area" id="gameArea">
+        <div class="player-status">
+            <strong>Connection:</strong> <span id="connectionStatus">Disconnected</span><br>
+            <strong>Room:</strong> <span id="roomStatus">None</span><br>
+            <strong>Players:</strong> <span id="playerCount">0</span>
+        </div>
+        <div class="player-status">
+            <strong>Your ID:</strong> <span id="playerId">-</span><br>
+            <strong>Game State:</strong> <span id="gameState">Waiting</span><br>
+            <strong>Events:</strong> <span id="eventCount">0</span>
+        </div>
+    </div>
+
+    <div class="log" id="eventLog"></div>
+
+    <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+    <script>
+        let socket = null;
+        let isConnected = false;
+        let playerId = Math.random().toString(36).substr(2, 9);
+        let currentRoom = null;
+        let eventCounter = 0;
+
+        function log(message, type = 'info') {
+            const logElement = document.getElementById('eventLog');
+            const timestamp = new Date().toLocaleTimeString();
+            const className = type === 'success' ? 'success' : (type === 'error' ? 'error' : 'info');
+            logElement.innerHTML += `<div class="${className}">[${timestamp}] ${message}</div>`;
+            logElement.scrollTop = logElement.scrollHeight;
+            
+            eventCounter++;
+            document.getElementById('eventCount').textContent = eventCounter;
+            console.log(message);
+        }
+
+        function updateUI() {
+            document.getElementById('playerId').textContent = playerId;
+            document.getElementById('connectionStatus').textContent = isConnected ? 'Connected' : 'Disconnected';
+            document.getElementById('roomStatus').textContent = currentRoom || 'None';
+            
+            document.getElementById('connectBtn').disabled = isConnected;
+            document.getElementById('createBtn').disabled = !isConnected;
+            document.getElementById('joinBtn').disabled = !isConnected;
+            document.getElementById('moveBtn').disabled = !isConnected || !currentRoom;
+            document.getElementById('cheeseBtn').disabled = !isConnected || !currentRoom;
+            document.getElementById('disconnectBtn').disabled = !isConnected;
+            
+            document.getElementById('gameArea').style.display = isConnected ? 'block' : 'none';
+        }
+
+        function connectToGame() {
+            log('🔄 Connecting to Capybara Game...', 'info');
+            
+            socket = io('https://capygame-seven.vercel.app', {
+                path: '/api/socket',
+                transports: ['polling', 'websocket'],
+                timeout: 10000,
+                forceNew: true
+            });
+
+            socket.on('connect', () => {
+                log('✅ Connected to game server!', 'success');
+                isConnected = true;
+                updateUI();
+            });
+
+            socket.on('disconnect', () => {
+                log('❌ Disconnected from server', 'error');
+                isConnected = false;
+                currentRoom = null;
+                updateUI();
+            });
+
+            socket.on('connect_error', (error) => {
+                log(`💥 Connection error: ${error.message}`, 'error');
+                isConnected = false;
+                updateUI();
+            });
+
+            socket.on('room_joined', (data) => {
+                currentRoom = data.roomId;
+                log(`🏠 Joined room ${data.roomId} with ${data.players ? data.players.length : 0} players`, 'success');
+                document.getElementById('playerCount').textContent = data.players ? data.players.length : 0;
+                updateUI();
+            });
+
+            socket.on('player_joined', (data) => {
+                log(`👤 New player joined: ${data.playerId}`, 'info');
+                const currentCount = parseInt(document.getElementById('playerCount').textContent);
+                document.getElementById('playerCount').textContent = currentCount + 1;
+            });
+
+            socket.on('player_left', (data) => {
+                log(`👋 Player left: ${data.playerId}`, 'info');
+                const currentCount = parseInt(document.getElementById('playerCount').textContent);
+                document.getElementById('playerCount').textContent = Math.max(0, currentCount - 1);
+            });
+
+            socket.on('game_start', (data) => {
+                log(`🎮 Game started with ${data.players ? data.players.length : 0} players!`, 'success');
+                document.getElementById('gameState').textContent = 'Playing';
+            });
+
+            socket.on('player_update', (data) => {
+                log(`🏃 Player moved: ${data.playerId || data.player?.id}`, 'info');
+            });
+
+            socket.on('player_threw', (data) => {
+                log(`🧀 Cheese thrown by: ${data.playerId || data.cheese?.owner}`, 'info');
+            });
+
+            socket.on('room_full', () => {
+                log('🚫 Room is full!', 'error');
+            });
+        }
+
+        function createTestRoom() {
+            if (!socket || !isConnected) return;
+            
+            const roomId = 'TEST' + Math.random().toString(36).substr(2, 2).toUpperCase();
+            log(`🎲 Creating test room: ${roomId}`, 'info');
+            
+            const playerData = {
+                id: playerId,
+                x: 100,
+                y: 100,
+                health: 10,
+                maxHealth: 10,
+                facing: 'right'
+            };
+
+            socket.emit('join_room', { roomId, playerData });
+        }
+
+        function joinTestRoom() {
+            const roomCode = document.getElementById('roomInput').value.trim().toUpperCase();
+            if (!socket || !isConnected || !roomCode) return;
+            
+            log(`🚪 Joining room: ${roomCode}`, 'info');
+            
+            const playerData = {
+                id: playerId,
+                x: 100,
+                y: 100,
+                health: 10,
+                maxHealth: 10,
+                facing: 'right'
+            };
+
+            socket.emit('join_room', { roomId: roomCode, playerData });
+        }
+
+        function testMovement() {
+            if (!socket || !isConnected || !currentRoom) return;
+            
+            log('🏃 Testing player movement...', 'info');
+            
+            socket.emit('player_update', {
+                playerId: playerId,
+                player: {
+                    id: playerId,
+                    x: Math.random() * 500,
+                    y: Math.random() * 400,
+                    health: 10,
+                    facing: Math.random() > 0.5 ? 'left' : 'right'
+                }
+            });
+        }
+
+        function testCheese() {
+            if (!socket || !isConnected || !currentRoom) return;
+            
+            log('🧀 Testing cheese throwing...', 'info');
+            
+            socket.emit('player_throw', {
+                playerId: playerId,
+                cheese: {
+                    x: Math.random() * 500,
+                    y: Math.random() * 400,
+                    owner: playerId,
+                    dx: (Math.random() - 0.5) * 2,
+                    dy: (Math.random() - 0.5) * 2
+                }
+            });
+        }
+
+        function disconnect() {
+            if (socket) {
+                socket.disconnect();
+                socket = null;
+            }
+            isConnected = false;
+            currentRoom = null;
+            updateUI();
+            log('👋 Disconnected from game', 'info');
+        }
+
+        // Initialize UI
+        updateUI();
+        log('🎯 Ready to test! Click "Connect to Game" to start.', 'info');
+    </script>
+</body>
+</html>
