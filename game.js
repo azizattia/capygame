@@ -182,13 +182,14 @@ class CapybaraGame {
     }
 
     setupEventListeners() {
-        document.getElementById('play-btn').addEventListener('click', () => this.showRoomSetup());
-        document.getElementById('create-room-btn').addEventListener('click', () => this.createRoom());
-        document.getElementById('create-custom-room-btn').addEventListener('click', () => this.createCustomRoom());
-        document.getElementById('join-room-btn').addEventListener('click', () => this.joinRoom());
-        document.getElementById('back-to-menu-btn').addEventListener('click', () => this.backToMenu());
-        document.getElementById('play-again-btn').addEventListener('click', () => this.resetGame());
-        document.getElementById('next-level-btn').addEventListener('click', () => this.nextLevel());
+        // Add both click and touchstart events for better mobile support
+        this.addMobileButton('play-btn', () => this.showRoomSetup());
+        this.addMobileButton('create-room-btn', () => this.createRoom());
+        this.addMobileButton('create-custom-room-btn', () => this.createCustomRoom());
+        this.addMobileButton('join-room-btn', () => this.joinRoom());
+        this.addMobileButton('back-to-menu-btn', () => this.backToMenu());
+        this.addMobileButton('play-again-btn', () => this.resetGame());
+        this.addMobileButton('next-level-btn', () => this.nextLevel());
 
         // Setup joystick controls
         this.setupJoystickControls();
@@ -203,6 +204,47 @@ class CapybaraGame {
         this.canvas.addEventListener('touchend', (e) => this.handleTouchEnd(e));
 
         window.addEventListener('resize', () => this.resizeCanvas());
+    }
+    
+    addMobileButton(buttonId, callback) {
+        const button = document.getElementById(buttonId);
+        if (!button) return;
+        
+        // Prevent default touch behaviors
+        button.style.touchAction = 'manipulation';
+        
+        // Add click event
+        button.addEventListener('click', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            callback();
+        });
+        
+        // Add touch events for better mobile responsiveness
+        button.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            button.style.transform = 'translateY(0px)';
+            button.style.boxShadow = '0 3px 10px rgba(0, 0, 0, 0.2)';
+        });
+        
+        button.addEventListener('touchend', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            
+            // Reset button style
+            button.style.transform = 'translateY(-2px)';
+            button.style.boxShadow = '0 7px 20px rgba(0, 0, 0, 0.3)';
+            
+            // Execute callback after a small delay
+            setTimeout(() => {
+                callback();
+            }, 100);
+        });
+        
+        button.addEventListener('touchcancel', (e) => {
+            button.style.transform = 'translateY(-2px)';
+            button.style.boxShadow = '0 7px 20px rgba(0, 0, 0, 0.3)';
+        });
     }
 
     setupJoystickControls() {

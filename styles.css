@@ -12,6 +12,13 @@ body {
     justify-content: center;
     align-items: center;
     overflow: hidden;
+    -webkit-touch-callout: none;
+    -webkit-user-select: none;
+    -khtml-user-select: none;
+    -moz-user-select: none;
+    -ms-user-select: none;
+    user-select: none;
+    touch-action: manipulation;
 }
 
 #main-menu {
@@ -39,7 +46,7 @@ body {
 
 .play-button {
     font-size: 1.5rem;
-    padding: 15px 30px;
+    padding: 20px 40px;
     background: linear-gradient(45deg, #FFB6C1, #FF69B4);
     color: white;
     border: none;
@@ -50,8 +57,46 @@ body {
     font-family: inherit;
     touch-action: manipulation;
     -webkit-tap-highlight-color: transparent;
-    min-height: 60px;
-    min-width: 150px;
+    -webkit-appearance: none;
+    -moz-appearance: none;
+    appearance: none;
+    min-height: 70px;
+    min-width: 180px;
+    margin: 10px;
+    position: relative;
+    z-index: 10;
+}
+
+.play-button:hover,
+.play-button:focus,
+.play-button:active {
+    transform: translateY(-2px);
+    box-shadow: 0 7px 20px rgba(0, 0, 0, 0.3);
+    outline: none;
+}
+
+.play-button:active {
+    transform: translateY(0px);
+    box-shadow: 0 3px 10px rgba(0, 0, 0, 0.2);
+    background: linear-gradient(45deg, #FF69B4, #FFB6C1);
+}
+
+/* Mobile-specific styles */
+@media (max-width: 768px) {
+    .play-button {
+        font-size: 1.8rem;
+        padding: 25px 45px;
+        min-height: 80px;
+        min-width: 200px;
+        margin: 15px;
+    }
+    
+    #main-menu {
+        padding: 30px 20px;
+        margin: 20px;
+        width: 90%;
+        max-width: none;
+    }
 }
 
 .play-button:hover {
