@@ -102,9 +102,11 @@ class CapybaraGame {
         
         this.socket = io(serverUrl, {
             path: socketPath,
-            transports: ['websocket', 'polling'],
-            timeout: 20000,
-            forceNew: true
+            transports: ['polling', 'websocket'],
+            timeout: 30000,
+            forceNew: true,
+            upgrade: true,
+            rememberUpgrade: false
         });
         
         this.socket.on('connect', () => {
