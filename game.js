@@ -952,7 +952,6 @@ class CapybaraGame {
             player.health = playerData.health || playerData.player?.health;
             player.facing = playerData.facing || playerData.player?.facing;
             
-            console.log(`✅ Remote player ${player.id} updated to (${newX}, ${newY})`);
             this.updateHealthUI();
         }
     }
@@ -1051,7 +1050,11 @@ class CapybaraGame {
             newY += this.movementVector.y * forceEqualSpeed;
             moved = true;
             
-            console.log(`LOCAL Player ${player.id} moving with forced speed: ${forceEqualSpeed}`);
+            // Monitor movement speeds for both players
+            if (Date.now() % 1000 < 50) { // Log every ~1 second
+                const localSpeed = Math.sqrt(this.movementVector.x ** 2 + this.movementVector.y ** 2) * forceEqualSpeed;
+                console.log(`🏃 LOCAL: ${localSpeed.toFixed(2)} px/frame | 🌐 REMOTE: synced via network`);
+            }
             
             // Update facing direction
             if (this.movementVector.x > 0) {
@@ -1357,53 +1360,7 @@ class CapybaraGame {
     }
     
     drawMobileControlAreas() {
-        // Only show on touch devices or small screens
-        if (window.innerWidth > 768 && !('ontouchstart' in window)) return;
-        
-        // Draw movement control area (left side)
-        this.ctx.save();
-        this.ctx.fillStyle = 'rgba(0, 150, 255, 0.1)';
-        this.ctx.fillRect(20, this.canvas.height - 120, 100, 100);
-        
-        this.ctx.strokeStyle = 'rgba(0, 150, 255, 0.4)';
-        this.ctx.lineWidth = 2;
-        this.ctx.beginPath();
-        this.ctx.arc(70, this.canvas.height - 70, 50, 0, Math.PI * 2);
-        this.ctx.stroke();
-        
-        // Draw inner circle
-        this.ctx.beginPath();
-        this.ctx.arc(70, this.canvas.height - 70, 15, 0, Math.PI * 2);
-        this.ctx.fillStyle = 'rgba(0, 150, 255, 0.3)';
-        this.ctx.fill();
-        
-        // Movement label
-        this.ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
-        this.ctx.font = '12px Arial';
-        this.ctx.textAlign = 'center';
-        this.ctx.fillText('MOVE', 70, this.canvas.height - 130);
-        
-        // Draw throw control area (right side)
-        this.ctx.fillStyle = 'rgba(255, 100, 0, 0.1)';
-        this.ctx.fillRect(this.canvas.width - 120, this.canvas.height - 120, 100, 100);
-        
-        this.ctx.strokeStyle = 'rgba(255, 100, 0, 0.4)';
-        this.ctx.lineWidth = 2;
-        this.ctx.beginPath();
-        this.ctx.arc(this.canvas.width - 70, this.canvas.height - 70, 50, 0, Math.PI * 2);
-        this.ctx.stroke();
-        
-        // Draw inner circle
-        this.ctx.beginPath();
-        this.ctx.arc(this.canvas.width - 70, this.canvas.height - 70, 15, 0, Math.PI * 2);
-        this.ctx.fillStyle = 'rgba(255, 100, 0, 0.3)';
-        this.ctx.fill();
-        
-        // Throw label
-        this.ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
-        this.ctx.fillText('AIM', this.canvas.width - 70, this.canvas.height - 130);
-        
-        this.ctx.restore();
+        // Mobile control areas removed - was covering health bars
     }
     
     drawMovementJoystick() {

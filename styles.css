@@ -204,12 +204,12 @@ input[type="text"]:active {
 
 #player-info {
     position: absolute;
-    bottom: 20px;
-    right: 20px;
+    bottom: 30px;
+    right: 30px;
     display: flex;
     flex-direction: column;
-    gap: 10px;
-    z-index: 100;
+    gap: 12px;
+    z-index: 9999;
     pointer-events: none;
     align-items: flex-end;
 }
@@ -217,21 +217,22 @@ input[type="text"]:active {
 .player-health {
     display: flex;
     align-items: center;
-    gap: 6px;
-    background: rgba(0, 0, 0, 0.7);
-    padding: 4px 8px;
-    border-radius: 15px;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
-    font-size: 0.7rem;
+    gap: 8px;
+    background: rgba(0, 0, 0, 0.8);
+    padding: 8px 12px;
+    border-radius: 20px;
+    box-shadow: 0 3px 12px rgba(0, 0, 0, 0.5);
+    font-size: 0.9rem;
     color: white;
     font-weight: bold;
+    border: 2px solid rgba(255, 255, 255, 0.3);
 }
 
 .health-bar {
-    width: 60px;
-    height: 12px;
+    width: 80px;
+    height: 16px;
     background: rgba(255, 255, 255, 0.3);
-    border-radius: 6px;
+    border-radius: 8px;
     overflow: hidden;
     border: 1px solid rgba(255, 255, 255, 0.5);
 }
