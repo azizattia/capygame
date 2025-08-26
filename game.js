@@ -610,6 +610,8 @@ class CapybaraGame {
         this.gameStarted = false;
         this.currentRoomId = null;
         this.cheeseProjectiles = [];
+        this.powerups = [];
+        this.currentLevel = 1; // Reset to level 1
         
         document.getElementById('game-container').style.display = 'none';
         document.getElementById('room-setup').style.display = 'none';
@@ -1187,40 +1189,57 @@ class CapybaraGame {
         
         console.log(`Advancing to level ${this.currentLevel}`);
         
-        // Reset everything for new level
+        // Reset everything for new level (but keep players)
         this.resetRound();
     }
 
     resetRound() {
         console.log(`Resetting round for level ${this.currentLevel}`);
         
-        this.gameState = 'waiting';
-        this.players.clear();
-        this.currentPlayer = null;
+        // Clear game objects but preserve multiplayer state
         this.cheeseProjectiles = [];
-        this.powerups = []; // Clear all powerups
+        this.powerups = []; 
         this.lastPowerupSpawn = 0;
         
+        // Load new level layout
         this.loadLevel();
-        this.createPlayer();
         
-        // Show waiting message
-        document.getElementById('waiting-message').style.display = 'block';
+        // Reset ALL players' health and positions (don't clear the players map)
+        this.players.forEach(player => {
+            const spawnPoints = this.getSpawnPoints();
+            if (player.isLocal) {
+                player.x = spawnPoints[0].x;
+                player.y = spawnPoints[0].y;
+            } else {
+                player.x = spawnPoints[1] ? spawnPoints[1].x : spawnPoints[0].x;
+                player.y = spawnPoints[1] ? spawnPoints[1].y : spawnPoints[0].y;
+            }
+            
+            // Reset health and effects
+            player.health = player.maxHealth;
+            player.shieldTime = 0;
+            player.hasShield = false;
+            player.speedBoostTime = 0;
+            player.rapidFireTime = 0;
+            player.speed = player.originalSpeed;
+            player.throwCooldown = 0;
+        });
         
-        // Rejoin the same room
-        if (this.currentRoomId) {
-            this.socket.emit('join_room', {
-                roomId: this.currentRoomId,
-                playerData: {
-                    id: this.playerId,
-                    x: this.currentPlayer.x,
-                    y: this.currentPlayer.y,
-                    health: this.currentPlayer.health,
-                    maxHealth: this.currentPlayer.maxHealth,
-                    facing: this.currentPlayer.facing
-                }
-            });
+        // Update UI immediately
+        this.updateHealthUI();
+        
+        // Don't change game state - keep it as 'playing' if we had 2 players
+        if (this.players.size >= 2) {
+            this.gameState = 'playing';
+            this.gameStarted = true;
+            document.getElementById('waiting-message').style.display = 'none';
+        } else {
+            this.gameState = 'waiting';
+            this.gameStarted = false;
+            document.getElementById('waiting-message').style.display = 'block';
         }
+        
+        console.log(`Round reset complete. Players: ${this.players.size}, Game state: ${this.gameState}`);
     }
 
     resetGame() {
