@@ -132,21 +132,25 @@ class CapybaraGame {
         });
 
         this.socket.on('room_joined', (data) => {
-            console.log('Joined room:', data.roomId);
+            console.log('Joined room:', data.roomId, 'with players:', data.players);
             this.currentRoomId = data.roomId;
             document.getElementById('current-room-code').textContent = data.roomId;
             document.getElementById('room-info').style.display = 'block';
             
             // Add existing players in the room (except ourselves)
-            if (data.players) {
+            if (data.players && data.players.length > 0) {
+                console.log('Adding existing players:', data.players);
                 data.players.forEach(playerData => {
+                    console.log('Checking player:', playerData.id, 'vs my ID:', this.playerId);
                     if (playerData.id !== this.playerId) {
+                        console.log('Adding remote player:', playerData.id);
                         this.addRemotePlayer(playerData);
                     }
                 });
             }
             
             this.showGame();
+            this.updateHealthUI();
         });
 
         this.socket.on('game_start', (data) => {
@@ -180,6 +184,7 @@ class CapybaraGame {
     setupEventListeners() {
         document.getElementById('play-btn').addEventListener('click', () => this.showRoomSetup());
         document.getElementById('create-room-btn').addEventListener('click', () => this.createRoom());
+        document.getElementById('create-custom-room-btn').addEventListener('click', () => this.createCustomRoom());
         document.getElementById('join-room-btn').addEventListener('click', () => this.joinRoom());
         document.getElementById('back-to-menu-btn').addEventListener('click', () => this.backToMenu());
         document.getElementById('play-again-btn').addEventListener('click', () => this.resetGame());
@@ -208,8 +213,8 @@ class CapybaraGame {
         this.setupJoystick(moveJoystick, (x, y) => {
             this.moveJoystick.x = x;
             this.moveJoystick.y = y;
-            this.movementVector.x = x * 3;
-            this.movementVector.y = y * 3;
+            this.movementVector.x = x * 1.5;
+            this.movementVector.y = y * 1.5;
         });
         
         // Aim joystick  
@@ -306,6 +311,15 @@ class CapybaraGame {
     createRoom() {
         const roomId = Math.random().toString(36).substr(2, 6).toUpperCase();
         this.joinRoomById(roomId);
+    }
+    
+    createCustomRoom() {
+        const roomId = document.getElementById('custom-room-input').value.trim().toUpperCase();
+        if (roomId.length === 6) {
+            this.joinRoomById(roomId);
+        } else {
+            alert('Please enter exactly 6 characters for the room code');
+        }
     }
 
     joinRoom() {
@@ -591,7 +605,7 @@ class CapybaraGame {
             height: 50,
             health: 10,
             maxHealth: 10,
-            speed: 3,
+            speed: 2,
             facing: 'right',
             throwCooldown: 0,
             isLocal: true
@@ -629,7 +643,7 @@ class CapybaraGame {
             height: 50,
             health: playerData.health,
             maxHealth: playerData.maxHealth,
-            speed: 3,
+            speed: 2,
             facing: playerData.facing,
             throwCooldown: 0,
             isLocal: false
