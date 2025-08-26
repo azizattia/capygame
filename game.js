@@ -9,9 +9,7 @@ class CapybaraGame {
         this.gameStarted = false;
         this.currentLevel = 1;
         this.maxLevel = 5;
-        this.playerWins = 0;
-        this.opponentWins = 0;
-        this.maxWins = 3; // Best of 5 (first to 3 wins)
+        // Removed tournament system - just 5 levels, one death = next level
         this.cheeseProjectiles = [];
         this.walls = [];
         this.currentRoomId = null;
@@ -1151,27 +1149,34 @@ class CapybaraGame {
 
     checkGameEnd() {
         const alivePlayers = Array.from(this.players.values()).filter(p => p.health > 0);
+        const deadPlayers = Array.from(this.players.values()).filter(p => p.health <= 0);
         
-        if (alivePlayers.length <= 1 && this.gameStarted) {
-            this.endRound(alivePlayers.length > 0 ? alivePlayers[0] : null);
+        // If someone died, end the round immediately
+        if (deadPlayers.length > 0 && this.gameStarted) {
+            console.log(`Player died, ending round. Alive: ${alivePlayers.length}, Dead: ${deadPlayers.length}`);
+            this.endRound(deadPlayers[0]); // Pass the dead player
         }
     }
 
-    endRound(winner) {
+    endRound(deadPlayer) {
         this.gameState = 'roundOver';
         this.gameStarted = false;
         
-        if (winner && winner.id === this.playerId) {
-            if (this.currentLevel < this.maxLevel) {
-                document.getElementById('level-complete-text').textContent = 
-                    `Level ${this.currentLevel} Complete!`;
-                document.getElementById('level-complete').style.display = 'block';
-            } else {
-                document.getElementById('winner-text').textContent = "You won all levels! fantso!";
-                document.getElementById('game-over').style.display = 'block';
-            }
+        // Someone died - immediately go to next level
+        if (this.currentLevel < this.maxLevel) {
+            // Show quick level transition
+            document.getElementById('level-complete-text').textContent = 
+                `Level ${this.currentLevel} Complete! Moving to Level ${this.currentLevel + 1}...`;
+            document.getElementById('level-complete').style.display = 'block';
+            
+            // Auto advance to next level after 2 seconds
+            setTimeout(() => {
+                this.nextLevel();
+            }, 2000);
         } else {
-            document.getElementById('winner-text').textContent = "You lost! fantso won!";
+            // Game completely finished after 5 levels
+            document.getElementById('winner-text').textContent = 
+                "All 5 levels completed! Great battle!";
             document.getElementById('game-over').style.display = 'block';
         }
     }
@@ -1179,17 +1184,28 @@ class CapybaraGame {
     nextLevel() {
         document.getElementById('level-complete').style.display = 'none';
         this.currentLevel++;
+        
+        console.log(`Advancing to level ${this.currentLevel}`);
+        
+        // Reset everything for new level
         this.resetRound();
     }
 
     resetRound() {
+        console.log(`Resetting round for level ${this.currentLevel}`);
+        
         this.gameState = 'waiting';
         this.players.clear();
         this.currentPlayer = null;
         this.cheeseProjectiles = [];
+        this.powerups = []; // Clear all powerups
+        this.lastPowerupSpawn = 0;
         
         this.loadLevel();
         this.createPlayer();
+        
+        // Show waiting message
+        document.getElementById('waiting-message').style.display = 'block';
         
         // Rejoin the same room
         if (this.currentRoomId) {
