@@ -1128,24 +1128,24 @@ class CapybaraGame {
     updateHealthUI() {
         const playersArray = Array.from(this.players.values());
         
-        // Current player health (always show as Player 1) - RED
+        // Current player health - BROWN (matches brown capybara)
         if (this.currentPlayer) {
             const p1Health = document.getElementById('p1-health');
             p1Health.style.width = (this.currentPlayer.health / this.currentPlayer.maxHealth * 100) + '%';
-            p1Health.style.background = 'linear-gradient(90deg, #FF6B6B, #FF8E8E)';
-            document.getElementById('p1-hp').textContent = `${this.currentPlayer.health}/${this.currentPlayer.maxHealth}`;
+            p1Health.style.background = 'linear-gradient(90deg, #8B4513, #D2691E)'; // Brown gradient
+            document.getElementById('p1-hp').textContent = `YOU: ${this.currentPlayer.health}/${this.currentPlayer.maxHealth}`;
         }
         
-        // Other player health (show as Player 2) - TEAL
+        // Other player health - YELLOW (matches yellow capybara)
         const otherPlayer = playersArray.find(p => p.id !== this.playerId);
         if (otherPlayer) {
             const p2Health = document.getElementById('p2-health');
             p2Health.style.width = (otherPlayer.health / otherPlayer.maxHealth * 100) + '%';
-            p2Health.style.background = 'linear-gradient(90deg, #4ECDC4, #6ED7D0)';
-            document.getElementById('p2-hp').textContent = `${otherPlayer.health}/${otherPlayer.maxHealth}`;
+            p2Health.style.background = 'linear-gradient(90deg, #FFD700, #FFFF99)'; // Yellow gradient
+            document.getElementById('p2-hp').textContent = `THEM: ${otherPlayer.health}/${otherPlayer.maxHealth}`;
         } else {
             document.getElementById('p2-health').style.width = '0%';
-            document.getElementById('p2-hp').textContent = '0/10';
+            document.getElementById('p2-hp').textContent = 'THEM: 0/10';
         }
     }
 
@@ -1415,29 +1415,25 @@ class CapybaraGame {
     drawCapybara(player) {
         this.ctx.save();
         
-        // Assign consistent colors based on player ID
-        const playerColors = {
-            'primary': '#FF6B6B',   // Red for current player
-            'secondary': '#4ECDC4', // Teal for opponent
-            'tertiary': '#45B7D1',  // Blue
-            'quaternary': '#96CEB4' // Green
-        };
-        
-        let playerColor;
+        // Different colored capybaras - complete body color change
+        let bodyColor, bellyColor;
         if (player.id === this.playerId) {
-            playerColor = playerColors.primary; // Current player is always red
+            // You are BROWN capybara
+            bodyColor = '#8B4513';  // Saddle brown
+            bellyColor = '#D2691E'; // Chocolate brown - lighter
         } else {
-            // Use consistent color for opponent based on their ID
-            const hash = this.hashString(player.id);
-            const colorKeys = Object.keys(playerColors).filter(k => k !== 'primary');
-            playerColor = playerColors[colorKeys[hash % colorKeys.length]];
+            // Opponent is YELLOW capybara  
+            bodyColor = '#FFD700';  // Gold
+            bellyColor = '#FFFF99'; // Light yellow
         }
         
-        this.ctx.fillStyle = playerColor;
+        // Draw main body
+        this.ctx.fillStyle = bodyColor;
         
         this.ctx.fillRect(player.x, player.y, player.width, player.height);
         
-        this.ctx.fillStyle = '#CD853F';
+        // Draw belly with lighter color
+        this.ctx.fillStyle = bellyColor;
         this.ctx.fillRect(player.x + 3, player.y + 3, player.width - 6, player.height - 6);
         
         this.ctx.fillStyle = '#000';
