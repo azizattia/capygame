@@ -9,6 +9,9 @@ class CapybaraGame {
         this.gameStarted = false;
         this.currentLevel = 1;
         this.maxLevel = 5;
+        this.playerWins = 0;
+        this.opponentWins = 0;
+        this.maxWins = 3; // Best of 5 (first to 3 wins)
         this.cheeseProjectiles = [];
         this.walls = [];
         this.currentRoomId = null;
@@ -17,15 +20,19 @@ class CapybaraGame {
         this.socket = null;
         this.isConnected = false;
         
-        // Joystick control variables
+        // Simplified joystick control
         this.moveJoystick = { x: 0, y: 0, active: false };
-        this.aimJoystick = { x: 0, y: 0, active: false };
         this.movementVector = { x: 0, y: 0 };
-        this.aimVector = { x: 0, y: 0 };
+        this.facingVector = { x: 1, y: 0 }; // Direction player is facing for shooting
         
         // Auto shooting
         this.lastShotTime = 0;
-        this.shootInterval = 3000; // 3 seconds
+        this.shootInterval = 1500; // 1.5 seconds - faster shooting
+        
+        // Powerups
+        this.powerups = [];
+        this.lastPowerupSpawn = 0;
+        this.powerupSpawnInterval = 8000; // 8 seconds between spawns
         
         // Multi-touch support
         this.activeTouches = new Map();
@@ -77,6 +84,115 @@ class CapybaraGame {
         this.resizeCanvas();
         this.connectSocket();
         this.gameLoop();
+    }
+    
+    spawnPowerups() {
+        const currentTime = Date.now();
+        if (currentTime - this.lastPowerupSpawn < this.powerupSpawnInterval) return;
+        if (this.powerups.length >= 4) return; // Max 4 powerups at once
+        
+        // Random chance to spawn powerup (30%)
+        if (Math.random() > 0.3) return;
+        
+        const powerupTypes = ['medkit', 'shield', 'speed', 'rapidfire'];
+        const existingTypes = this.powerups.map(p => p.type);
+        
+        // Limit each type to max 2
+        const availableTypes = powerupTypes.filter(type => {
+            return existingTypes.filter(t => t === type).length < 2;
+        });
+        
+        if (availableTypes.length === 0) return;
+        
+        const randomType = availableTypes[Math.floor(Math.random() * availableTypes.length)];
+        const spawnPoint = this.getRandomSpawnPoint();
+        
+        this.powerups.push({
+            type: randomType,
+            x: spawnPoint.x,
+            y: spawnPoint.y,
+            width: 25,
+            height: 25,
+            life: 20000, // 20 seconds before disappearing
+            spawnTime: currentTime
+        });
+        
+        this.lastPowerupSpawn = currentTime;
+    }
+    
+    getRandomSpawnPoint() {
+        let attempts = 0;
+        while (attempts < 10) {
+            const x = Math.random() * (this.canvas.width - 50) + 25;
+            const y = Math.random() * (this.canvas.height - 50) + 25;
+            
+            // Make sure it's not in a wall or too close to players
+            if (!this.isPointInWall(x, y, 25, 25) && !this.isNearPlayers(x, y, 80)) {
+                return { x, y };
+            }
+            attempts++;
+        }
+        // Fallback to center if no good spot found
+        return { x: this.canvas.width / 2, y: this.canvas.height / 2 };
+    }
+    
+    isNearPlayers(x, y, distance) {
+        for (let player of this.players.values()) {
+            const dx = player.x - x;
+            const dy = player.y - y;
+            if (Math.sqrt(dx * dx + dy * dy) < distance) {
+                return true;
+            }
+        }
+        return false;
+    }
+    
+    updatePowerups() {
+        const currentTime = Date.now();
+        this.powerups = this.powerups.filter(powerup => {
+            powerup.life -= 16; // Roughly 60fps
+            return powerup.life > 0;
+        });
+    }
+    
+    checkPowerupCollisions() {
+        if (!this.currentPlayer) return;
+        
+        this.powerups = this.powerups.filter(powerup => {
+            // Check collision with current player
+            if (powerup.x < this.currentPlayer.x + this.currentPlayer.width &&
+                powerup.x + powerup.width > this.currentPlayer.x &&
+                powerup.y < this.currentPlayer.y + this.currentPlayer.height &&
+                powerup.y + powerup.height > this.currentPlayer.y) {
+                
+                this.applyPowerup(this.currentPlayer, powerup);
+                return false; // Remove powerup
+            }
+            return true;
+        });
+    }
+    
+    applyPowerup(player, powerup) {
+        switch (powerup.type) {
+            case 'medkit':
+                player.health = Math.min(player.health + 1, player.maxHealth);
+                break;
+            case 'shield':
+                player.shieldTime = 5000; // 5 seconds
+                player.hasShield = true;
+                break;
+            case 'speed':
+                player.speedBoostTime = 8000; // 8 seconds
+                player.originalSpeed = player.speed;
+                player.speed = player.speed * 1.5;
+                break;
+            case 'rapidfire':
+                player.rapidFireTime = 8000; // 8 seconds
+                player.originalShootInterval = this.shootInterval;
+                this.shootInterval = 500; // Much faster
+                break;
+        }
+        this.updateHealthUI();
     }
 
     connectSocket() {
@@ -308,22 +424,19 @@ class CapybaraGame {
 
     setupJoystickControls() {
         const moveJoystick = document.getElementById('move-joystick');
-        const aimJoystick = document.getElementById('aim-joystick');
         
-        // Move joystick
+        // Single move joystick - also sets facing direction
         this.setupJoystick(moveJoystick, (x, y) => {
             this.moveJoystick.x = x;
             this.moveJoystick.y = y;
             this.movementVector.x = x * 1.5;
             this.movementVector.y = y * 1.5;
-        });
-        
-        // Aim joystick  
-        this.setupJoystick(aimJoystick, (x, y) => {
-            this.aimJoystick.x = x;
-            this.aimJoystick.y = y;
-            this.aimVector.x = x;
-            this.aimVector.y = y;
+            
+            // Set facing direction for shooting
+            if (Math.abs(x) > 0.1 || Math.abs(y) > 0.1) {
+                this.facingVector.x = x;
+                this.facingVector.y = y;
+            }
         });
     }
     
@@ -709,7 +822,13 @@ class CapybaraGame {
             speed: 2,
             facing: 'right',
             throwCooldown: 0,
-            isLocal: true
+            isLocal: true,
+            // Powerup effects
+            shieldTime: 0,
+            hasShield: false,
+            speedBoostTime: 0,
+            rapidFireTime: 0,
+            originalSpeed: 2
         };
         
         this.players.set(this.playerId, this.currentPlayer);
@@ -747,7 +866,13 @@ class CapybaraGame {
             speed: 2,
             facing: playerData.facing,
             throwCooldown: 0,
-            isLocal: false
+            isLocal: false,
+            // Powerup effects
+            shieldTime: 0,
+            hasShield: false,
+            speedBoostTime: 0,
+            rapidFireTime: 0,
+            originalSpeed: 2
         };
         
         this.players.set(playerData.id, remotePlayer);
@@ -795,12 +920,37 @@ class CapybaraGame {
             if (player.throwCooldown > 0) {
                 player.throwCooldown--;
             }
+            
+            // Update powerup timers
+            if (player.shieldTime > 0) {
+                player.shieldTime -= 16;
+                if (player.shieldTime <= 0) {
+                    player.hasShield = false;
+                }
+            }
+            
+            if (player.speedBoostTime > 0) {
+                player.speedBoostTime -= 16;
+                if (player.speedBoostTime <= 0) {
+                    player.speed = player.originalSpeed;
+                }
+            }
+            
+            if (player.rapidFireTime > 0) {
+                player.rapidFireTime -= 16;
+                if (player.rapidFireTime <= 0) {
+                    this.shootInterval = player.originalShootInterval || 1500;
+                }
+            }
         });
         
         this.updateCurrentPlayer();
         this.handleAutoShooting();
         this.updateProjectiles();
+        this.updatePowerups();
+        this.spawnPowerups();
         this.checkCollisions();
+        this.checkPowerupCollisions();
         this.checkGameEnd();
     }
     
@@ -809,8 +959,9 @@ class CapybaraGame {
         
         const currentTime = Date.now();
         if (currentTime - this.lastShotTime >= this.shootInterval) {
-            // Only shoot if aiming or if there's any aim input
-            if (Math.abs(this.aimVector.x) > 0.1 || Math.abs(this.aimVector.y) > 0.1) {
+            // Auto shoot if player is moving or has a facing direction
+            if (Math.abs(this.movementVector.x) > 0.1 || Math.abs(this.movementVector.y) > 0.1 ||
+                Math.abs(this.facingVector.x) > 0.1 || Math.abs(this.facingVector.y) > 0.1) {
                 this.throwCheese();
                 this.lastShotTime = currentTime;
             }
@@ -876,8 +1027,8 @@ class CapybaraGame {
             width: 12,
             height: 12,
             speed: 6,
-            dx: this.aimVector.x,
-            dy: this.aimVector.y,
+            dx: this.facingVector.x,
+            dy: this.facingVector.y,
             owner: this.currentPlayer.id,
             life: 120,
             id: Math.random().toString(36).substr(2, 9)
@@ -936,6 +1087,11 @@ class CapybaraGame {
     }
 
     damagePlayer(player) {
+        // Check if player has shield
+        if (player.hasShield && player.shieldTime > 0) {
+            return; // Shield blocks damage
+        }
+        
         player.health--;
         this.updateHealthUI();
         
@@ -1047,6 +1203,10 @@ class CapybaraGame {
         
         this.cheeseProjectiles.forEach(cheese => {
             this.drawCheese(cheese);
+        });
+        
+        this.powerups.forEach(powerup => {
+            this.drawPowerup(powerup);
         });
         
         // Draw drag indicators
@@ -1261,6 +1421,15 @@ class CapybaraGame {
             this.ctx.fillRect(player.x - 2, player.y - 2, player.width + 4, player.height + 4);
         }
         
+        // Shield effect
+        if (player.hasShield && player.shieldTime > 0) {
+            this.ctx.strokeStyle = 'rgba(0, 128, 255, 0.8)';
+            this.ctx.lineWidth = 3;
+            this.ctx.beginPath();
+            this.ctx.arc(player.x + player.width/2, player.y + player.height/2, player.width/2 + 10, 0, Math.PI * 2);
+            this.ctx.stroke();
+        }
+        
         this.ctx.restore();
     }
 
@@ -1277,6 +1446,65 @@ class CapybaraGame {
         this.ctx.fillRect(cheese.x + 3, cheese.y + 3, 2, 2);
         this.ctx.fillRect(cheese.x + 7, cheese.y + 5, 2, 2);
         this.ctx.fillRect(cheese.x + 5, cheese.y + 7, 2, 2);
+        
+        this.ctx.restore();
+    }
+    
+    drawPowerup(powerup) {
+        this.ctx.save();
+        
+        // Pulsing effect
+        const pulse = Math.sin(Date.now() * 0.01) * 0.1 + 0.9;
+        this.ctx.globalAlpha = pulse;
+        
+        // Draw based on type
+        switch (powerup.type) {
+            case 'medkit':
+                // Red cross
+                this.ctx.fillStyle = '#FF0000';
+                this.ctx.fillRect(powerup.x, powerup.y, powerup.width, powerup.height);
+                this.ctx.fillStyle = '#FFFFFF';
+                this.ctx.fillRect(powerup.x + 8, powerup.y + 5, 9, 15);
+                this.ctx.fillRect(powerup.x + 5, powerup.y + 8, 15, 9);
+                break;
+            case 'shield':
+                // Blue shield
+                this.ctx.fillStyle = '#0080FF';
+                this.ctx.beginPath();
+                this.ctx.moveTo(powerup.x + 12, powerup.y);
+                this.ctx.lineTo(powerup.x + 25, powerup.y + 8);
+                this.ctx.lineTo(powerup.x + 20, powerup.y + 25);
+                this.ctx.lineTo(powerup.x + 5, powerup.y + 25);
+                this.ctx.lineTo(powerup.x, powerup.y + 8);
+                this.ctx.closePath();
+                this.ctx.fill();
+                break;
+            case 'speed':
+                // Green lightning bolt
+                this.ctx.fillStyle = '#00FF00';
+                this.ctx.beginPath();
+                this.ctx.moveTo(powerup.x + 12, powerup.y);
+                this.ctx.lineTo(powerup.x + 18, powerup.y + 10);
+                this.ctx.lineTo(powerup.x + 15, powerup.y + 12);
+                this.ctx.lineTo(powerup.x + 20, powerup.y + 25);
+                this.ctx.lineTo(powerup.x + 10, powerup.y + 15);
+                this.ctx.lineTo(powerup.x + 13, powerup.y + 13);
+                this.ctx.lineTo(powerup.x + 8, powerup.y);
+                this.ctx.closePath();
+                this.ctx.fill();
+                break;
+            case 'rapidfire':
+                // Orange/yellow bullets
+                this.ctx.fillStyle = '#FF8000';
+                this.ctx.fillRect(powerup.x, powerup.y, powerup.width, powerup.height);
+                this.ctx.fillStyle = '#FFD700';
+                for (let i = 0; i < 3; i++) {
+                    this.ctx.beginPath();
+                    this.ctx.arc(powerup.x + 6 + i * 6, powerup.y + 12, 3, 0, Math.PI * 2);
+                    this.ctx.fill();
+                }
+                break;
+        }
         
         this.ctx.restore();
     }
