@@ -60,46 +60,24 @@ const SocketHandler = (req, res) => {
           });
         }
 
-        socket.emit('room_joined', { 
+        socket.emit('room_joined', {
           roomId,
-          playerId: playerData.id,
-          playerCount: room.players.size 
+          players: Array.from(room.players.values())
         });
       });
 
-      socket.on('player_move', (data) => {
+      socket.on('player_update', (data) => {
         if (socket.roomId) {
-          socket.to(socket.roomId).emit('player_moved', {
-            playerId: socket.playerId,
-            ...data
-          });
+          socket.to(socket.roomId).emit('player_update', data);
         }
       });
 
       socket.on('player_throw', (data) => {
         if (socket.roomId) {
-          socket.to(socket.roomId).emit('player_threw', {
-            playerId: socket.playerId,
-            ...data
-          });
+          socket.to(socket.roomId).emit('player_threw', data);
         }
       });
 
-      socket.on('player_hit', (data) => {
-        if (socket.roomId) {
-          socket.to(socket.roomId).emit('player_was_hit', {
-            playerId: data.targetId,
-            damage: data.damage,
-            attackerId: socket.playerId
-          });
-        }
-      });
-
-      socket.on('game_over', (data) => {
-        if (socket.roomId) {
-          io.to(socket.roomId).emit('game_ended', data);
-        }
-      });
 
       socket.on('disconnect', () => {
         console.log('Player disconnected:', socket.id);

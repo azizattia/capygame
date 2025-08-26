@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Multiplayer Test</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .log { background: #f0f0f0; padding: 10px; margin: 10px 0; border-radius: 5px; max-height: 200px; overflow-y: auto; }
+        button { margin: 5px; padding: 10px; }
+        input { padding: 5px; margin: 5px; }
+    </style>
+</head>
+<body>
+    <h1>Multiplayer Connection Test</h1>
+    
+    <div>
+        <button onclick="createRoom()">Create Room</button>
+        <input type="text" id="roomCode" placeholder="Enter room code" maxlength="6">
+        <button onclick="joinRoom()">Join Room</button>
+        <button onclick="disconnect()">Disconnect</button>
+    </div>
+    
+    <div>
+        <strong>Connection Status:</strong> <span id="status">Disconnected</span>
+    </div>
+    
+    <div>
+        <strong>Current Room:</strong> <span id="currentRoom">None</span>
+    </div>
+    
+    <div>
+        <strong>Players in Room:</strong> <span id="playerCount">0</span>
+    </div>
+    
+    <div class="log" id="log"></div>
+
+    <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+    <script>
+        let socket = null;
+        let playerId = Math.random().toString(36).substr(2, 9);
+        let currentRoomId = null;
+        
+        function log(message) {
+            const logElement = document.getElementById('log');
+            const timestamp = new Date().toLocaleTimeString();
+            logElement.innerHTML += `[${timestamp}] ${message}<br>`;
+            logElement.scrollTop = logElement.scrollHeight;
+            console.log(message);
+        }
+        
+        function connect() {
+            if (socket) return;
+            
+            socket = io({
+                path: "/socket.io/",
+                transports: ['websocket', 'polling'],
+                timeout: 20000,
+                forceNew: true
+            });
+            
+            socket.on('connect', () => {
+                log('✅ Connected to server');
+                document.getElementById('status').textContent = 'Connected';
+                document.getElementById('status').style.color = 'green';
+            });
+            
+            socket.on('disconnect', () => {
+                log('❌ Disconnected from server');
+                document.getElementById('status').textContent = 'Disconnected';
+                document.getElementById('status').style.color = 'red';
+            });
+            
+            socket.on('room_joined', (data) => {
+                log(`🏠 Joined room: ${data.roomId} with ${data.players.length} players`);
+                currentRoomId = data.roomId;
+                document.getElementById('currentRoom').textContent = data.roomId;
+                document.getElementById('playerCount').textContent = data.players.length;
+            });
+            
+            socket.on('player_joined', (data) => {
+                log(`👤 Player joined: ${data.playerId}`);
+                updatePlayerCount();
+            });
+            
+            socket.on('player_left', (data) => {
+                log(`👋 Player left: ${data.playerId}`);
+                updatePlayerCount();
+            });
+            
+            socket.on('game_start', (data) => {
+                log(`🎮 Game started! Players: ${data.players ? data.players.length : 'unknown'}`);
+            });
+            
+            socket.on('room_full', () => {
+                log('🚫 Room is full!');
+            });
+        }
+        
+        function updatePlayerCount() {
+            // This is a simple estimation - in real app you'd track this properly
+            const current = parseInt(document.getElementById('playerCount').textContent);
+            // Don't change it here since we don't have exact count from this event
+        }
+        
+        function createRoom() {
+            if (!socket || !socket.connected) {
+                connect();
+                setTimeout(createRoom, 1000);
+                return;
+            }
+            
+            const roomId = Math.random().toString(36).substr(2, 6).toUpperCase();
+            log(`🎲 Creating room: ${roomId}`);
+            joinRoomById(roomId);
+        }
+        
+        function joinRoom() {
+            const roomCode = document.getElementById('roomCode').value.trim().toUpperCase();
+            if (!roomCode || roomCode.length !== 6) {
+                alert('Please enter a valid 6-character room code');
+                return;
+            }
+            
+            if (!socket || !socket.connected) {
+                connect();
+                setTimeout(() => joinRoom(), 1000);
+                return;
+            }
+            
+            joinRoomById(roomCode);
+        }
+        
+        function joinRoomById(roomId) {
+            log(`🚪 Attempting to join room: ${roomId}`);
+            
+            const playerData = {
+                id: playerId,
+                x: 100,
+                y: 100,
+                health: 10,
+                maxHealth: 10,
+                facing: 1
+            };
+            
+            socket.emit('join_room', {
+                roomId: roomId,
+                playerData: playerData
+            });
+        }
+        
+        function disconnect() {
+            if (socket) {
+                socket.disconnect();
+                socket = null;
+                currentRoomId = null;
+                document.getElementById('currentRoom').textContent = 'None';
+                document.getElementById('playerCount').textContent = '0';
+            }
+        }
+        
+        // Auto-connect on page load
+        connect();
+    </script>
+</body>
+</html>

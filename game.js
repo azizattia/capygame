@@ -32,6 +32,19 @@ class CapybaraGame {
         this.movementTouchId = null;
         this.throwTouchId = null;
         
+        // Drag movement variables
+        this.isDragging = false;
+        this.isThrowing = false;
+        this.dragStartX = 0;
+        this.dragStartY = 0;
+        this.dragCurrentX = 0;
+        this.dragCurrentY = 0;
+        this.throwStartX = 0;
+        this.throwStartY = 0;
+        this.throwCurrentX = 0;
+        this.throwCurrentY = 0;
+        this.throwVector = { x: 0, y: 0 };
+        
         this.levels = {
             1: { name: "Open Field", walls: [] },
             2: { name: "Center Block", walls: [{ x: 350, y: 250, width: 100, height: 100 }] },
@@ -67,12 +80,11 @@ class CapybaraGame {
     }
 
     connectSocket() {
-        // Use different socket path for production (Vercel) vs local development
-        const socketPath = window.location.hostname === 'localhost' ? '/socket.io/' : '/api/socket';
-        const isProduction = window.location.hostname !== 'localhost';
         this.socket = io({
-            path: socketPath,
-            transports: isProduction ? ['polling'] : ['websocket', 'polling']
+            path: "/api/socket",
+            transports: ['polling', 'websocket'],
+            timeout: 20000,
+            forceNew: true
         });
         
         this.socket.on('connect', () => {
@@ -102,11 +114,31 @@ class CapybaraGame {
             this.currentRoomId = data.roomId;
             document.getElementById('current-room-code').textContent = data.roomId;
             document.getElementById('room-info').style.display = 'block';
+            
+            // Add existing players in the room (except ourselves)
+            if (data.players) {
+                data.players.forEach(playerData => {
+                    if (playerData.id !== this.playerId) {
+                        this.addRemotePlayer(playerData);
+                    }
+                });
+            }
+            
             this.showGame();
         });
 
         this.socket.on('game_start', (data) => {
             console.log('Game starting with players:', data.players);
+            
+            // Initialize all players from server data
+            if (data.players) {
+                data.players.forEach(playerData => {
+                    if (playerData.id !== this.playerId && !this.players.has(playerData.id)) {
+                        this.addRemotePlayer(playerData);
+                    }
+                });
+            }
+            
             this.startGamePlay();
         });
 
@@ -133,6 +165,15 @@ class CapybaraGame {
 
         // Setup joystick controls
         this.setupJoystickControls();
+        
+        // Setup canvas mouse/touch events for drag controls
+        this.canvas.addEventListener('mousedown', (e) => this.handleMouseDown(e));
+        this.canvas.addEventListener('mousemove', (e) => this.handleMouseMove(e));
+        this.canvas.addEventListener('mouseup', (e) => this.handleMouseUp(e));
+        
+        this.canvas.addEventListener('touchstart', (e) => this.handleTouchStart(e));
+        this.canvas.addEventListener('touchmove', (e) => this.handleTouchMove(e));
+        this.canvas.addEventListener('touchend', (e) => this.handleTouchEnd(e));
 
         window.addEventListener('resize', () => this.resizeCanvas());
     }
@@ -294,7 +335,7 @@ class CapybaraGame {
         this.players.clear();
         this.currentPlayer = null;
         this.gameStarted = false;
-        this.roomId = null;
+        this.currentRoomId = null;
         this.cheeseProjectiles = [];
         
         document.getElementById('game-container').style.display = 'none';
@@ -829,9 +870,9 @@ class CapybaraGame {
         this.createPlayer();
         
         // Rejoin the same room
-        if (this.roomId) {
+        if (this.currentRoomId) {
             this.socket.emit('join_room', {
-                roomId: this.roomId,
+                roomId: this.currentRoomId,
                 playerData: {
                     id: this.playerId,
                     x: this.currentPlayer.x,

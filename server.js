@@ -9,7 +9,11 @@ const io = new Server(server, {
   cors: {
     origin: "*",
     methods: ["GET", "POST"]
-  }
+  },
+  path: "/socket.io/",
+  transports: ['websocket', 'polling'],
+  pingTimeout: 60000,
+  pingInterval: 25000
 });
 
 app.use(express.static(path.join(__dirname)));
@@ -50,14 +54,16 @@ io.on('connection', (socket) => {
       player: playerData
     });
 
-    socket.emit('joined_room', {
+    socket.emit('room_joined', {
       roomId,
       players: Array.from(room.players.values())
     });
 
     if (room.players.size === 2 && !room.gameStarted) {
       room.gameStarted = true;
-      io.to(roomId).emit('game_start');
+      io.to(roomId).emit('game_start', {
+        players: Array.from(room.players.values())
+      });
     }
   });
 
@@ -67,9 +73,9 @@ io.on('connection', (socket) => {
     }
   });
 
-  socket.on('cheese_throw', (data) => {
+  socket.on('player_throw', (data) => {
     if (socket.roomId) {
-      socket.to(socket.roomId).emit('cheese_throw', data);
+      socket.to(socket.roomId).emit('player_threw', data);
     }
   });
 
