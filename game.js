@@ -190,6 +190,9 @@ class CapybaraGame {
         this.addMobileButton('back-to-menu-btn', () => this.backToMenu());
         this.addMobileButton('play-again-btn', () => this.resetGame());
         this.addMobileButton('next-level-btn', () => this.nextLevel());
+        
+        // Fix mobile input fields
+        this.setupMobileInputs();
 
         // Setup joystick controls
         this.setupJoystickControls();
@@ -209,6 +212,9 @@ class CapybaraGame {
     addMobileButton(buttonId, callback) {
         const button = document.getElementById(buttonId);
         if (!button) return;
+        
+        // Only apply touch handling to buttons, not inputs
+        if (button.tagName === 'INPUT') return;
         
         // Prevent default touch behaviors
         button.style.touchAction = 'manipulation';
@@ -244,6 +250,33 @@ class CapybaraGame {
         button.addEventListener('touchcancel', (e) => {
             button.style.transform = 'translateY(-2px)';
             button.style.boxShadow = '0 7px 20px rgba(0, 0, 0, 0.3)';
+        });
+    }
+    
+    setupMobileInputs() {
+        const inputs = ['room-code-input', 'custom-room-input'];
+        
+        inputs.forEach(inputId => {
+            const input = document.getElementById(inputId);
+            if (!input) return;
+            
+            // Enable text selection and input for these fields
+            input.style.webkitUserSelect = 'text';
+            input.style.userSelect = 'text';
+            input.style.touchAction = 'manipulation';
+            
+            // Focus handling for mobile
+            input.addEventListener('touchstart', (e) => {
+                e.stopPropagation();
+            });
+            
+            input.addEventListener('focus', (e) => {
+                e.target.style.transform = 'scale(1.05)';
+            });
+            
+            input.addEventListener('blur', (e) => {
+                e.target.style.transform = 'scale(1)';
+            });
         });
     }
 

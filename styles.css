@@ -13,12 +13,16 @@ body {
     align-items: center;
     overflow: hidden;
     -webkit-touch-callout: none;
+    touch-action: manipulation;
+}
+
+/* Disable selection for non-input elements */
+.title, .play-button, #main-menu, #room-setup, #game-container {
     -webkit-user-select: none;
     -khtml-user-select: none;
     -moz-user-select: none;
     -ms-user-select: none;
     user-select: none;
-    touch-action: manipulation;
 }
 
 #main-menu {
@@ -96,6 +100,53 @@ body {
         margin: 20px;
         width: 90%;
         max-width: none;
+    }
+}
+
+/* Input field styles */
+input[type="text"] {
+    font-size: 1.2rem;
+    padding: 15px 20px;
+    border: 2px solid #FFB6C1;
+    border-radius: 15px;
+    background: white;
+    color: #333;
+    font-family: inherit;
+    text-align: center;
+    text-transform: uppercase;
+    letter-spacing: 2px;
+    outline: none;
+    transition: all 0.3s ease;
+    -webkit-appearance: none;
+    -moz-appearance: none;
+    appearance: none;
+    touch-action: manipulation;
+    -webkit-user-select: text;
+    -moz-user-select: text;
+    -ms-user-select: text;
+    user-select: text;
+    min-height: 50px;
+    min-width: 200px;
+    margin: 10px;
+}
+
+input[type="text"]:focus {
+    border-color: #FF69B4;
+    box-shadow: 0 0 10px rgba(255, 105, 180, 0.5);
+    transform: scale(1.05);
+}
+
+input[type="text"]:active {
+    transform: scale(0.98);
+}
+
+@media (max-width: 768px) {
+    input[type="text"] {
+        font-size: 1.4rem;
+        padding: 20px 25px;
+        min-height: 60px;
+        min-width: 250px;
+        margin: 15px;
     }
 }
 
