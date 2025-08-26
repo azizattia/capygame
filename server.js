@@ -106,6 +106,13 @@ io.on('connection', (socket) => {
     }
   });
 
+  socket.on('powerup_applied', (data) => {
+    if (socket.roomId) {
+      socket.to(socket.roomId).emit('powerup_applied', data);
+      console.log(`Syncing powerup ${data.powerupType} for player ${data.playerId}`);
+    }
+  });
+
   socket.on('disconnect', () => {
     console.log('Player disconnected:', socket.id);
     

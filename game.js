@@ -171,6 +171,8 @@ class CapybaraGame {
     }
     
     applyPowerup(player, powerup) {
+        console.log(`Applying powerup ${powerup.type} to player ${player.id}`);
+        
         switch (powerup.type) {
             case 'medkit':
                 player.health = Math.min(player.health + 1, player.maxHealth);
@@ -178,6 +180,7 @@ class CapybaraGame {
             case 'shield':
                 player.shieldTime = 5000; // 5 seconds
                 player.hasShield = true;
+                console.log(`Player ${player.id} got shield!`);
                 break;
             case 'speed':
                 player.speedBoostTime = 8000; // 8 seconds
@@ -190,6 +193,20 @@ class CapybaraGame {
                 this.shootInterval = 500; // Much faster
                 break;
         }
+        
+        // Send powerup state to other players for visual sync
+        if (this.isConnected && this.socket && player.isLocal) {
+            this.socket.emit('powerup_applied', {
+                playerId: player.id,
+                powerupType: powerup.type,
+                shieldTime: player.shieldTime,
+                hasShield: player.hasShield,
+                speedBoostTime: player.speedBoostTime,
+                rapidFireTime: player.rapidFireTime,
+                health: player.health
+            });
+        }
+        
         this.updateHealthUI();
     }
 
@@ -287,6 +304,20 @@ class CapybaraGame {
             setTimeout(() => {
                 document.getElementById('room-full-message').style.display = 'none';
             }, 3000);
+        });
+
+        this.socket.on('powerup_applied', (data) => {
+            console.log('Received powerup sync:', data);
+            const player = this.players.get(data.playerId);
+            if (player && !player.isLocal) {
+                // Sync visual effects for remote player
+                player.shieldTime = data.shieldTime || 0;
+                player.hasShield = data.hasShield || false;
+                player.speedBoostTime = data.speedBoostTime || 0;
+                player.rapidFireTime = data.rapidFireTime || 0;
+                player.health = data.health;
+                console.log(`Synced powerup effects for remote player ${player.id}`);
+            }
         });
 
         this.socket.on('disconnect', () => {
@@ -838,8 +869,8 @@ class CapybaraGame {
         
         this.currentPlayer = {
             id: this.playerId,
-            x: spawnPoints[0].x,
-            y: spawnPoints[0].y,
+            x: 50, // FORCE top-left
+            y: 50, // FORCE top-left
             width: 50,
             height: 50,
             health: 10,
@@ -885,8 +916,8 @@ class CapybaraGame {
         
         const remotePlayer = {
             id: playerData.id,
-            x: spawnPoints[1] ? spawnPoints[1].x : playerData.x,
-            y: spawnPoints[1] ? spawnPoints[1].y : playerData.y,
+            x: this.canvas.width - 100, // FORCE bottom-right
+            y: this.canvas.height - 100, // FORCE bottom-right
             width: 50,
             height: 50,
             health: 10, // FORCE same health
@@ -1006,14 +1037,15 @@ class CapybaraGame {
         let newY = player.y;
         let moved = false;
         
-        // Apply drag movement with consistent speed
-        const baseSpeed = 2; // Force consistent speed for all players
+        // Apply drag movement with FORCED equal speed
         if (this.movementVector.x !== 0 || this.movementVector.y !== 0) {
-            // Use baseSpeed unless player has speed boost powerup
-            const currentSpeed = player.speedBoostTime > 0 ? player.speed : baseSpeed;
-            newX += this.movementVector.x * currentSpeed;
-            newY += this.movementVector.y * currentSpeed;
+            // FORCE same speed for all players - ignore player.speed completely
+            const forceEqualSpeed = 2;
+            newX += this.movementVector.x * forceEqualSpeed;
+            newY += this.movementVector.y * forceEqualSpeed;
             moved = true;
+            
+            console.log(`Player ${player.id} moving with forced speed: ${forceEqualSpeed}`);
             
             // Update facing direction
             if (this.movementVector.x > 0) {
@@ -1214,36 +1246,34 @@ class CapybaraGame {
         
         // Reset ALL players' health and positions (maintain consistent spawns)
         const spawnPoints = this.getSpawnPoints();
-        let playerIndex = 0;
+        console.log('Available spawn points:', spawnPoints);
         
         this.players.forEach(player => {
-            // Assign spawn points consistently
-            const spawnPoint = spawnPoints[playerIndex % spawnPoints.length];
-            
-            // Current player always gets first spawn (top-left)
+            // FORCE specific spawn positions
             if (player.isLocal) {
-                player.x = spawnPoints[0].x;
-                player.y = spawnPoints[0].y;
+                // YOU always spawn at TOP-LEFT
+                player.x = 50;
+                player.y = 50;
+                console.log(`Local player ${player.id} spawned at TOP-LEFT: (${player.x}, ${player.y})`);
             } else {
-                // Other players get subsequent spawns
-                player.x = spawnPoints[1] ? spawnPoints[1].x : spawnPoints[0].x;
-                player.y = spawnPoints[1] ? spawnPoints[1].y : spawnPoints[0].y;
+                // OPPONENT always spawns at BOTTOM-RIGHT  
+                player.x = this.canvas.width - 100;
+                player.y = this.canvas.height - 100;
+                console.log(`Remote player ${player.id} spawned at BOTTOM-RIGHT: (${player.x}, ${player.y})`);
             }
-            
-            playerIndex++;
             
             // Reset health and effects to EQUAL stats
             player.health = 10;
             player.maxHealth = 10;
-            player.speed = 2; // SAME for everyone
-            player.originalSpeed = 2;
+            player.speed = 2; // FORCE same speed
+            player.originalSpeed = 2; // FORCE same base speed
             player.shieldTime = 0;
             player.hasShield = false;
             player.speedBoostTime = 0;
             player.rapidFireTime = 0;
             player.throwCooldown = 0;
             
-            console.log(`Reset player ${player.id} at (${player.x}, ${player.y}) with speed ${player.speed}`);
+            console.log(`Reset player ${player.id} at (${player.x}, ${player.y}) with FORCED speed: 2`);
         });
         
         // Update UI immediately
