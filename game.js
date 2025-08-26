@@ -11,7 +11,7 @@ class CapybaraGame {
         this.maxLevel = 5;
         this.cheeseProjectiles = [];
         this.walls = [];
-        this.roomId = null;
+        this.currentRoomId = null;
         
         // Socket.IO connection
         this.socket = null;
@@ -84,20 +84,6 @@ class CapybaraGame {
             this.isConnected = true;
         });
 
-        this.socket.on('joined_room', (data) => {
-            this.roomId = data.roomId;
-            document.getElementById('current-room-code').textContent = data.roomId;
-            document.getElementById('room-info').style.display = 'block';
-            
-            // Add existing players
-            data.players.forEach(playerData => {
-                if (playerData.id !== this.playerId) {
-                    this.addRemotePlayer(playerData);
-                }
-            });
-            
-            this.showGame();
-        });
 
         this.socket.on('player_joined', (data) => {
             this.addRemotePlayer(data.player);
@@ -115,7 +101,16 @@ class CapybaraGame {
             this.addRemoteCheese(data.cheese);
         });
 
-        this.socket.on('game_start', () => {
+        this.socket.on('room_joined', (data) => {
+            console.log('Joined room:', data.roomId);
+            this.currentRoomId = data.roomId;
+            document.getElementById('current-room-code').textContent = data.roomId;
+            document.getElementById('room-info').style.display = 'block';
+            this.showGame();
+        });
+
+        this.socket.on('game_start', (data) => {
+            console.log('Game starting with players:', data.players);
             this.startGamePlay();
         });
 
@@ -178,6 +173,11 @@ class CapybaraGame {
     }
 
     joinRoomById(roomId) {
+        if (!this.socket || !this.isConnected) {
+            alert('Connecting to server... Please try again in a moment.');
+            return;
+        }
+        
         this.createPlayer();
         this.socket.emit('join_room', {
             roomId: roomId,
