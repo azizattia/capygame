@@ -24,8 +24,20 @@ app.get('/health', (req, res) => {
     status: 'healthy', 
     uptime: process.uptime(), 
     rooms: gameRooms.size,
-    timestamp: new Date().toISOString() 
+    timestamp: new Date().toISOString(),
+    socketio: 'running'
   });
+});
+
+// Test Socket.IO endpoint
+app.get('/test-socket', (req, res) => {
+  res.send(`
+    <h1>Socket.IO Test</h1>
+    <p>Server is running at: ${req.get('host')}</p>
+    <p>Socket.IO should be available at: /socket.io/</p>
+    <script src="/socket.io/socket.io.js"></script>
+    <script>const socket = io(); console.log('Socket.IO loaded:', !!socket);</script>
+  `);
 });
 
 // Root endpoint
