@@ -203,28 +203,36 @@ input[type="text"]:active {
 }
 
 #player-info {
+    position: absolute;
+    top: 10px;
+    left: 50%;
+    transform: translateX(-50%);
     display: flex;
-    gap: 20px;
-    flex-wrap: wrap;
+    gap: 15px;
+    z-index: 100;
+    pointer-events: none;
 }
 
 .player-health {
     display: flex;
     align-items: center;
-    gap: 10px;
-    background: rgba(255, 255, 255, 0.9);
-    padding: 10px 15px;
-    border-radius: 15px;
-    box-shadow: 0 3px 10px rgba(0, 0, 0, 0.2);
+    gap: 8px;
+    background: rgba(0, 0, 0, 0.7);
+    padding: 8px 12px;
+    border-radius: 20px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+    font-size: 0.9rem;
+    color: white;
+    font-weight: bold;
 }
 
 .health-bar {
-    width: 100px;
-    height: 20px;
-    background: #ddd;
-    border-radius: 10px;
+    width: 80px;
+    height: 16px;
+    background: rgba(255, 255, 255, 0.3);
+    border-radius: 8px;
     overflow: hidden;
-    border: 2px solid #666;
+    border: 1px solid rgba(255, 255, 255, 0.5);
 }
 
 .health-fill {

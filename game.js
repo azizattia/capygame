@@ -429,13 +429,20 @@ class CapybaraGame {
         this.setupJoystick(moveJoystick, (x, y) => {
             this.moveJoystick.x = x;
             this.moveJoystick.y = y;
-            this.movementVector.x = x * 1.5;
-            this.movementVector.y = y * 1.5;
             
-            // Set facing direction for shooting
-            if (Math.abs(x) > 0.1 || Math.abs(y) > 0.1) {
-                this.facingVector.x = x;
-                this.facingVector.y = y;
+            // Smoother movement with better responsiveness
+            const sensitivity = 2.5;
+            this.movementVector.x = x * sensitivity;
+            this.movementVector.y = y * sensitivity;
+            
+            // Set facing direction for shooting (lower threshold)
+            if (Math.abs(x) > 0.05 || Math.abs(y) > 0.05) {
+                // Normalize for consistent facing direction
+                const magnitude = Math.sqrt(x * x + y * y);
+                if (magnitude > 0) {
+                    this.facingVector.x = x / magnitude;
+                    this.facingVector.y = y / magnitude;
+                }
             }
         });
     }
@@ -462,18 +469,36 @@ class CapybaraGame {
             const y = clientY - rect.top - centerY;
             
             const distance = Math.sqrt(x * x + y * y);
+            let normalizedX, normalizedY;
             
             if (distance <= maxDistance) {
                 knob.style.left = `${centerX + x}px`;
                 knob.style.top = `${centerY + y}px`;
-                onMove(x / maxDistance, y / maxDistance);
+                normalizedX = x / maxDistance;
+                normalizedY = y / maxDistance;
             } else {
                 const angle = Math.atan2(y, x);
                 const limitedX = Math.cos(angle) * maxDistance;
                 const limitedY = Math.sin(angle) * maxDistance;
                 knob.style.left = `${centerX + limitedX}px`;
                 knob.style.top = `${centerY + limitedY}px`;
-                onMove(limitedX / maxDistance, limitedY / maxDistance);
+                normalizedX = limitedX / maxDistance;
+                normalizedY = limitedY / maxDistance;
+            }
+            
+            // Apply deadzone for more precise control
+            const deadzone = 0.1;
+            const magnitude = Math.sqrt(normalizedX * normalizedX + normalizedY * normalizedY);
+            
+            if (magnitude < deadzone) {
+                onMove(0, 0);
+            } else {
+                // Scale to remove deadzone effect
+                const scale = (magnitude - deadzone) / (1 - deadzone);
+                onMove(
+                    (normalizedX / magnitude) * scale,
+                    (normalizedY / magnitude) * scale
+                );
             }
         };
         
@@ -1103,16 +1128,20 @@ class CapybaraGame {
     updateHealthUI() {
         const playersArray = Array.from(this.players.values());
         
-        // Current player health (always show as Player 1)
+        // Current player health (always show as Player 1) - RED
         if (this.currentPlayer) {
-            document.getElementById('p1-health').style.width = (this.currentPlayer.health / this.currentPlayer.maxHealth * 100) + '%';
+            const p1Health = document.getElementById('p1-health');
+            p1Health.style.width = (this.currentPlayer.health / this.currentPlayer.maxHealth * 100) + '%';
+            p1Health.style.background = 'linear-gradient(90deg, #FF6B6B, #FF8E8E)';
             document.getElementById('p1-hp').textContent = `${this.currentPlayer.health}/${this.currentPlayer.maxHealth}`;
         }
         
-        // Other player health (show as Player 2)
+        // Other player health (show as Player 2) - TEAL
         const otherPlayer = playersArray.find(p => p.id !== this.playerId);
         if (otherPlayer) {
-            document.getElementById('p2-health').style.width = (otherPlayer.health / otherPlayer.maxHealth * 100) + '%';
+            const p2Health = document.getElementById('p2-health');
+            p2Health.style.width = (otherPlayer.health / otherPlayer.maxHealth * 100) + '%';
+            p2Health.style.background = 'linear-gradient(90deg, #4ECDC4, #6ED7D0)';
             document.getElementById('p2-hp').textContent = `${otherPlayer.health}/${otherPlayer.maxHealth}`;
         } else {
             document.getElementById('p2-health').style.width = '0%';
@@ -1386,12 +1415,25 @@ class CapybaraGame {
     drawCapybara(player) {
         this.ctx.save();
         
-        // Different colors for different players
+        // Assign consistent colors based on player ID
+        const playerColors = {
+            'primary': '#FF6B6B',   // Red for current player
+            'secondary': '#4ECDC4', // Teal for opponent
+            'tertiary': '#45B7D1',  // Blue
+            'quaternary': '#96CEB4' // Green
+        };
+        
+        let playerColor;
         if (player.id === this.playerId) {
-            this.ctx.fillStyle = '#D2691E'; // Brown for current player
+            playerColor = playerColors.primary; // Current player is always red
         } else {
-            this.ctx.fillStyle = '#4169E1'; // Blue for other players
+            // Use consistent color for opponent based on their ID
+            const hash = this.hashString(player.id);
+            const colorKeys = Object.keys(playerColors).filter(k => k !== 'primary');
+            playerColor = playerColors[colorKeys[hash % colorKeys.length]];
         }
+        
+        this.ctx.fillStyle = playerColor;
         
         this.ctx.fillRect(player.x, player.y, player.width, player.height);
         
@@ -1448,6 +1490,16 @@ class CapybaraGame {
         this.ctx.fillRect(cheese.x + 5, cheese.y + 7, 2, 2);
         
         this.ctx.restore();
+    }
+    
+    hashString(str) {
+        let hash = 0;
+        for (let i = 0; i < str.length; i++) {
+            const char = str.charCodeAt(i);
+            hash = ((hash << 5) - hash) + char;
+            hash = hash & hash; // Convert to 32-bit integer
+        }
+        return Math.abs(hash);
     }
     
     drawPowerup(powerup) {
