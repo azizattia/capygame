@@ -11,16 +11,11 @@ class CapybaraGame {
         this.maxLevel = 5;
         this.cheeseProjectiles = [];
         this.walls = [];
-        this.gameRoom = this.getRoomFromURL() || 'capygame_room_1';
-        this.isHost = false;
-        this.localPlayers = [];
+        this.roomId = null;
         
-        // WebSocket connection for multiplayer
-        this.ws = null;
-        this.wsUrl = 'wss://socketsbay.com/wss/v2/1/' + this.gameRoom + '/';
+        // Socket.IO connection
+        this.socket = null;
         this.isConnected = false;
-        this.connectionAttempts = 0;
-        this.maxConnectionAttempts = 3;
         
         // Drag movement variables
         this.isDragging = false;
@@ -67,25 +62,79 @@ class CapybaraGame {
         this.init();
     }
 
-    getRoomFromURL() {
-        const urlParams = new URLSearchParams(window.location.search);
-        return urlParams.get('room');
-    }
-
     init() {
         this.canvas = document.getElementById('game-canvas');
         this.ctx = this.canvas.getContext('2d');
         
         this.setupEventListeners();
         this.resizeCanvas();
+        this.connectSocket();
         this.gameLoop();
     }
 
+    connectSocket() {
+        this.socket = io();
+        
+        this.socket.on('connect', () => {
+            console.log('Connected to server');
+            this.isConnected = true;
+        });
+
+        this.socket.on('joined_room', (data) => {
+            this.roomId = data.roomId;
+            document.getElementById('current-room-code').textContent = data.roomId;
+            document.getElementById('room-info').style.display = 'block';
+            
+            // Add existing players
+            data.players.forEach(playerData => {
+                if (playerData.id !== this.playerId) {
+                    this.addRemotePlayer(playerData);
+                }
+            });
+            
+            this.showGame();
+        });
+
+        this.socket.on('player_joined', (data) => {
+            this.addRemotePlayer(data.player);
+        });
+
+        this.socket.on('player_update', (data) => {
+            this.updateRemotePlayer(data.player);
+        });
+
+        this.socket.on('player_left', (data) => {
+            this.removeRemotePlayer(data.playerId);
+        });
+
+        this.socket.on('cheese_throw', (data) => {
+            this.addRemoteCheese(data.cheese);
+        });
+
+        this.socket.on('game_start', () => {
+            this.startGamePlay();
+        });
+
+        this.socket.on('room_full', () => {
+            document.getElementById('room-full-message').style.display = 'block';
+            setTimeout(() => {
+                document.getElementById('room-full-message').style.display = 'none';
+            }, 3000);
+        });
+
+        this.socket.on('disconnect', () => {
+            console.log('Disconnected from server');
+            this.isConnected = false;
+        });
+    }
+
     setupEventListeners() {
-        document.getElementById('play-btn').addEventListener('click', () => this.startGame());
+        document.getElementById('play-btn').addEventListener('click', () => this.showRoomSetup());
+        document.getElementById('create-room-btn').addEventListener('click', () => this.createRoom());
+        document.getElementById('join-room-btn').addEventListener('click', () => this.joinRoom());
+        document.getElementById('back-to-menu-btn').addEventListener('click', () => this.backToMenu());
         document.getElementById('play-again-btn').addEventListener('click', () => this.resetGame());
         document.getElementById('next-level-btn').addEventListener('click', () => this.nextLevel());
-        document.getElementById('add-player-btn').addEventListener('click', () => this.addLocalPlayer());
 
         // Mouse events for drag movement
         this.canvas.addEventListener('mousedown', (e) => this.handleMouseDown(e));
@@ -103,7 +152,72 @@ class CapybaraGame {
         this.canvas.addEventListener('touchend', (e) => e.preventDefault());
 
         window.addEventListener('resize', () => this.resizeCanvas());
-        window.addEventListener('beforeunload', () => this.handlePageUnload());
+    }
+
+    showRoomSetup() {
+        document.getElementById('main-menu').style.display = 'none';
+        document.getElementById('room-setup').style.display = 'block';
+    }
+
+    createRoom() {
+        const roomId = Math.random().toString(36).substr(2, 6).toUpperCase();
+        this.joinRoomById(roomId);
+    }
+
+    joinRoom() {
+        const roomId = document.getElementById('room-code-input').value.trim().toUpperCase();
+        if (roomId.length === 6) {
+            this.joinRoomById(roomId);
+        } else {
+            alert('Please enter a valid 6-character room code');
+        }
+    }
+
+    joinRoomById(roomId) {
+        this.createPlayer();
+        this.socket.emit('join_room', {
+            roomId: roomId,
+            playerData: {
+                id: this.playerId,
+                x: this.currentPlayer.x,
+                y: this.currentPlayer.y,
+                health: this.currentPlayer.health,
+                maxHealth: this.currentPlayer.maxHealth,
+                facing: this.currentPlayer.facing
+            }
+        });
+    }
+
+    showGame() {
+        document.getElementById('room-setup').style.display = 'none';
+        document.getElementById('game-container').style.display = 'flex';
+        this.gameState = 'waiting';
+        this.currentLevel = 1;
+        this.loadLevel();
+        
+        document.getElementById('waiting-message').style.display = 'block';
+    }
+
+    backToMenu() {
+        if (this.socket && this.isConnected) {
+            this.socket.disconnect();
+            this.socket.connect();
+        }
+        
+        this.gameState = 'menu';
+        this.players.clear();
+        this.currentPlayer = null;
+        this.gameStarted = false;
+        this.roomId = null;
+        this.cheeseProjectiles = [];
+        
+        document.getElementById('game-container').style.display = 'none';
+        document.getElementById('room-setup').style.display = 'none';
+        document.getElementById('game-over').style.display = 'none';
+        document.getElementById('level-complete').style.display = 'none';
+        document.getElementById('main-menu').style.display = 'block';
+        document.getElementById('room-info').style.display = 'none';
+        document.getElementById('room-code-input').value = '';
     }
 
     handleMouseDown(e) {
@@ -312,17 +426,6 @@ class CapybaraGame {
         this.canvas.style.height = maxHeight + 'px';
     }
 
-    startGame() {
-        document.getElementById('main-menu').style.display = 'none';
-        document.getElementById('game-container').style.display = 'flex';
-        this.gameState = 'waiting';
-        this.currentLevel = 1;
-        
-        this.loadLevel();
-        this.createPlayer();
-        this.joinLobby();
-    }
-
     loadLevel() {
         this.walls = [...this.levels[this.currentLevel].walls];
         document.getElementById('current-level').textContent = `Level ${this.currentLevel}`;
@@ -366,121 +469,13 @@ class CapybaraGame {
         );
     }
 
-    joinLobby() {
-        // Connect to WebSocket for multiplayer
-        this.connectToWebSocket();
-    }
-    
-    connectToWebSocket() {
-        if (this.ws && this.ws.readyState === WebSocket.OPEN) {
-            return;
-        }
-        
-        document.getElementById('waiting-message').innerHTML = 'Connecting to multiplayer...';
-        document.getElementById('waiting-message').style.display = 'block';
-        
-        try {
-            this.ws = new WebSocket(this.wsUrl);
-            
-            this.ws.onopen = () => {
-                console.log('Connected to multiplayer server');
-                this.isConnected = true;
-                this.connectionAttempts = 0;
-                
-                // Send player join message
-                this.sendMessage({
-                    type: 'player_join',
-                    playerId: this.playerId,
-                    player: {
-                        id: this.playerId,
-                        x: this.currentPlayer.x,
-                        y: this.currentPlayer.y,
-                        health: this.currentPlayer.health,
-                        maxHealth: this.currentPlayer.maxHealth,
-                        facing: this.currentPlayer.facing
-                    }
-                });
-                
-                this.showRoomCode();
-            };
-            
-            this.ws.onmessage = (event) => {
-                try {
-                    const message = JSON.parse(event.data);
-                    this.handleWebSocketMessage(message);
-                } catch (error) {
-                    console.log('Received non-JSON message:', event.data);
-                }
-            };
-            
-            this.ws.onclose = () => {
-                console.log('Disconnected from multiplayer server');
-                this.isConnected = false;
-                
-                if (this.connectionAttempts < this.maxConnectionAttempts) {
-                    this.connectionAttempts++;
-                    setTimeout(() => {
-                        console.log(`Reconnection attempt ${this.connectionAttempts}`);
-                        this.connectToWebSocket();
-                    }, 2000);
-                } else {
-                    document.getElementById('waiting-message').innerHTML = 'Connection failed. Click "Add AI Player" to play offline.';
-                }
-            };
-            
-            this.ws.onerror = (error) => {
-                console.log('WebSocket error:', error);
-            };
-            
-        } catch (error) {
-            console.log('WebSocket connection error:', error);
-            document.getElementById('waiting-message').innerHTML = 'Connection failed. Click "Add AI Player" to play offline.';
-        }
-    }
-    
-    sendMessage(message) {
-        if (this.ws && this.ws.readyState === WebSocket.OPEN) {
-            this.ws.send(JSON.stringify(message));
-        }
-    }
-    
-    handleWebSocketMessage(message) {
-        switch (message.type) {
-            case 'player_join':
-                if (message.playerId !== this.playerId) {
-                    this.addRemotePlayer(message.player);
-                }
-                break;
-                
-            case 'player_update':
-                if (message.playerId !== this.playerId) {
-                    this.updateRemotePlayer(message.player);
-                }
-                break;
-                
-            case 'player_leave':
-                if (message.playerId !== this.playerId) {
-                    this.removeRemotePlayer(message.playerId);
-                }
-                break;
-                
-            case 'cheese_throw':
-                if (message.playerId !== this.playerId) {
-                    this.addRemoteCheese(message.cheese);
-                }
-                break;
-                
-            case 'game_start':
-                this.startGamePlay();
-                break;
-        }
-    }
-    
     addRemotePlayer(playerData) {
+        const spawnPoints = this.getSpawnPoints();
+        
         const remotePlayer = {
             id: playerData.id,
-            x: playerData.x,
-            y: playerData.y,
+            x: spawnPoints[1] ? spawnPoints[1].x : playerData.x,
+            y: spawnPoints[1] ? spawnPoints[1].y : playerData.y,
             width: 50,
             height: 50,
             health: playerData.health,
@@ -492,13 +487,6 @@ class CapybaraGame {
         };
         
         this.players.set(playerData.id, remotePlayer);
-        
-        // Check if we have enough players to start
-        if (this.players.size >= 2 && !this.gameStarted) {
-            this.sendMessage({ type: 'game_start' });
-            this.startGamePlay();
-        }
-        
         this.updateHealthUI();
     }
     
@@ -516,77 +504,23 @@ class CapybaraGame {
     removeRemotePlayer(playerId) {
         this.players.delete(playerId);
         this.updateHealthUI();
+        
+        // Return to waiting state if opponent leaves
+        if (this.players.size < 2 && this.gameStarted) {
+            this.gameState = 'waiting';
+            this.gameStarted = false;
+            document.getElementById('waiting-message').style.display = 'block';
+        }
     }
     
     addRemoteCheese(cheeseData) {
         this.cheeseProjectiles.push(cheeseData);
-    }
-    
-    // Handle page unload to notify other players
-    handlePageUnload() {
-        if (this.ws && this.ws.readyState === WebSocket.OPEN) {
-            this.sendMessage({
-                type: 'player_leave',
-                playerId: this.playerId
-            });
-        }
-    }
-
-    showRoomCode() {
-        const roomUrl = `${window.location.origin}${window.location.pathname}?room=${this.gameRoom}`;
-        const waitingMessage = document.getElementById('waiting-message');
-        waitingMessage.innerHTML = `
-            Waiting for another player...<br>
-            <small>Share this link: <a href="${roomUrl}" target="_blank">${roomUrl}</a></small>
-        `;
-    }
-
-    addLocalPlayer() {
-        if (this.gameState !== 'waiting') return;
-        
-        const spawnPoints = this.getSpawnPoints();
-        const localPlayerId = 'local_player_' + Math.random().toString(36).substr(2, 9);
-        
-        const localPlayer = {
-            id: localPlayerId,
-            x: spawnPoints[1] ? spawnPoints[1].x : this.canvas.width - 100,
-            y: spawnPoints[1] ? spawnPoints[1].y : this.canvas.height - 100,
-            width: 50,
-            height: 50,
-            health: 10,
-            maxHealth: 10,
-            speed: 3,
-            facing: 'left',
-            throwCooldown: 0,
-            isLocal: true,
-            isAI: true,
-            aiTimer: 0,
-            aiTargetX: spawnPoints[1] ? spawnPoints[1].x : this.canvas.width - 100,
-            aiTargetY: spawnPoints[1] ? spawnPoints[1].y : this.canvas.height - 100
-        };
-        
-        this.localPlayers.push(localPlayer);
-        this.players.set(localPlayerId, localPlayer);
-        
-        // Check if we have 2 players now
-        const totalPlayers = this.players.size;
-        
-        if (totalPlayers >= 2) {
-            this.gameStarted = true;
-            this.gameState = 'playing';
-            document.getElementById('waiting-message').style.display = 'none';
-            this.updateHealthUI();
-        }
-        
-        // Hide the button after adding a local player
-        document.getElementById('add-player-btn').style.display = 'none';
     }
 
     startGamePlay() {
         this.gameState = 'playing';
         this.gameStarted = true;
         document.getElementById('waiting-message').style.display = 'none';
-        
         this.updateHealthUI();
     }
 
@@ -600,7 +534,6 @@ class CapybaraGame {
         });
         
         this.updateCurrentPlayer();
-        this.updateLocalPlayers();
         this.updateProjectiles();
         this.checkCollisions();
         this.checkGameEnd();
@@ -640,9 +573,8 @@ class CapybaraGame {
         }
         
         // Send player update to other players if moved
-        if (moved && this.isConnected) {
-            this.sendMessage({
-                type: 'player_update',
+        if (moved && this.isConnected && this.socket) {
+            this.socket.emit('player_update', {
                 playerId: this.playerId,
                 player: {
                     id: player.id,
@@ -653,93 +585,6 @@ class CapybaraGame {
                 }
             });
         }
-    }
-
-    updateLocalPlayers() {
-        this.localPlayers.forEach(player => {
-            if (!player.isAI) return;
-            
-            player.aiTimer++;
-            
-            // Simple AI behavior
-            const target = this.currentPlayer;
-            if (!target) return;
-            
-            const dx = target.x - player.x;
-            const dy = target.y - player.y;
-            const distance = Math.sqrt(dx * dx + dy * dy);
-            
-            // Change AI target every 2 seconds
-            if (player.aiTimer % 120 === 0) {
-                if (Math.random() < 0.7) {
-                    // Move towards player
-                    player.aiTargetX = target.x + (Math.random() - 0.5) * 100;
-                    player.aiTargetY = target.y + (Math.random() - 0.5) * 100;
-                } else {
-                    // Move to random position
-                    player.aiTargetX = Math.random() * (this.canvas.width - 100);
-                    player.aiTargetY = Math.random() * (this.canvas.height - 100);
-                }
-            }
-            
-            // Move towards target
-            const targetDx = player.aiTargetX - player.x;
-            const targetDy = player.aiTargetY - player.y;
-            
-            let newX = player.x;
-            let newY = player.y;
-            
-            if (Math.abs(targetDx) > 5) {
-                if (targetDx > 0) {
-                    newX += player.speed;
-                    player.facing = 'right';
-                } else {
-                    newX -= player.speed;
-                    player.facing = 'left';
-                }
-            }
-            
-            if (Math.abs(targetDy) > 5) {
-                if (targetDy > 0) {
-                    newY += player.speed;
-                } else {
-                    newY -= player.speed;
-                }
-            }
-            
-            // Apply movement with collision detection
-            if (!this.isPointInWall(newX, player.y, player.width, player.height)) {
-                player.x = Math.max(0, Math.min(this.canvas.width - player.width, newX));
-            }
-            if (!this.isPointInWall(player.x, newY, player.width, player.height)) {
-                player.y = Math.max(0, Math.min(this.canvas.height - player.height, newY));
-            }
-            
-            // Throw cheese at player if close enough
-            if (distance < 200 && player.throwCooldown <= 0 && Math.random() < 0.01) {
-                const throwDx = target.x - player.x;
-                const throwDy = target.y - player.y;
-                const throwDistance = Math.sqrt(throwDx * throwDx + throwDy * throwDy);
-                
-                if (throwDistance > 0) {
-                    const cheese = {
-                        x: player.x + player.width / 2,
-                        y: player.y + player.height / 2,
-                        width: 12,
-                        height: 12,
-                        speed: 6,
-                        dx: throwDx / throwDistance,
-                        dy: throwDy / throwDistance,
-                        owner: player.id,
-                        life: 120,
-                        id: Math.random().toString(36).substr(2, 9)
-                    };
-                    
-                    this.cheeseProjectiles.push(cheese);
-                    player.throwCooldown = 45;
-                }
-            }
-        });
     }
 
     throwCheese(player) {
@@ -761,9 +606,8 @@ class CapybaraGame {
         this.cheeseProjectiles.push(cheese);
         
         // Send cheese throw to other players
-        if (this.isConnected) {
-            this.sendMessage({
-                type: 'cheese_throw',
+        if (this.isConnected && this.socket) {
+            this.socket.emit('cheese_throw', {
                 playerId: this.playerId,
                 cheese: cheese
             });
@@ -823,16 +667,20 @@ class CapybaraGame {
     updateHealthUI() {
         const playersArray = Array.from(this.players.values());
         
-        if (playersArray.length >= 1) {
-            const p1 = playersArray[0];
-            document.getElementById('p1-health').style.width = (p1.health / p1.maxHealth * 100) + '%';
-            document.getElementById('p1-hp').textContent = `${p1.health}/${p1.maxHealth}`;
+        // Current player health (always show as Player 1)
+        if (this.currentPlayer) {
+            document.getElementById('p1-health').style.width = (this.currentPlayer.health / this.currentPlayer.maxHealth * 100) + '%';
+            document.getElementById('p1-hp').textContent = `${this.currentPlayer.health}/${this.currentPlayer.maxHealth}`;
         }
         
-        if (playersArray.length >= 2) {
-            const p2 = playersArray[1];
-            document.getElementById('p2-health').style.width = (p2.health / p2.maxHealth * 100) + '%';
-            document.getElementById('p2-hp').textContent = `${p2.health}/${p2.maxHealth}`;
+        // Other player health (show as Player 2)
+        const otherPlayer = playersArray.find(p => p.id !== this.playerId);
+        if (otherPlayer) {
+            document.getElementById('p2-health').style.width = (otherPlayer.health / otherPlayer.maxHealth * 100) + '%';
+            document.getElementById('p2-hp').textContent = `${otherPlayer.health}/${otherPlayer.maxHealth}`;
+        } else {
+            document.getElementById('p2-health').style.width = '0%';
+            document.getElementById('p2-hp').textContent = '0/10';
         }
     }
 
@@ -858,7 +706,7 @@ class CapybaraGame {
                 document.getElementById('game-over').style.display = 'block';
             }
         } else {
-            document.getElementById('winner-text').textContent = "fantso won!";
+            document.getElementById('winner-text').textContent = "You lost! fantso won!";
             document.getElementById('game-over').style.display = 'block';
         }
     }
@@ -873,35 +721,29 @@ class CapybaraGame {
         this.gameState = 'waiting';
         this.players.clear();
         this.currentPlayer = null;
-        this.localPlayers = [];
         this.cheeseProjectiles = [];
         
         this.loadLevel();
         this.createPlayer();
-        this.joinLobby();
+        
+        // Rejoin the same room
+        if (this.roomId) {
+            this.socket.emit('join_room', {
+                roomId: this.roomId,
+                playerData: {
+                    id: this.playerId,
+                    x: this.currentPlayer.x,
+                    y: this.currentPlayer.y,
+                    health: this.currentPlayer.health,
+                    maxHealth: this.currentPlayer.maxHealth,
+                    facing: this.currentPlayer.facing
+                }
+            });
+        }
     }
 
     resetGame() {
-        this.gameState = 'menu';
-        this.players.clear();
-        this.currentPlayer = null;
-        this.localPlayers = [];
-        this.gameStarted = false;
-        this.currentLevel = 1;
-        this.cheeseProjectiles = [];
-        
-        // Close WebSocket connection
-        if (this.ws) {
-            this.ws.close();
-            this.ws = null;
-        }
-        this.isConnected = false;
-        
-        document.getElementById('game-over').style.display = 'none';
-        document.getElementById('level-complete').style.display = 'none';
-        document.getElementById('game-container').style.display = 'none';
-        document.getElementById('main-menu').style.display = 'block';
-        document.getElementById('add-player-btn').style.display = 'block';
+        this.backToMenu();
     }
 
     render() {

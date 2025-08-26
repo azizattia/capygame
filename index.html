@@ -12,21 +12,37 @@
         <button id="play-btn" class="play-button">Play</button>
     </div>
 
+    <div id="room-setup" style="display: none;">
+        <h2>Multiplayer Setup</h2>
+        <div id="room-options">
+            <button id="create-room-btn" class="play-button">Create Room</button>
+            <div id="join-room-section">
+                <input type="text" id="room-code-input" placeholder="Enter room code" maxlength="6">
+                <button id="join-room-btn" class="play-button">Join Room</button>
+            </div>
+        </div>
+        <div id="room-info" style="display: none;">
+            <p>Room Code: <strong id="current-room-code"></strong></p>
+            <p>Share this code with your friend!</p>
+        </div>
+    </div>
+
     <div id="game-container" style="display: none;">
         <div id="game-ui">
             <div id="level-info">
                 <span id="current-level">Level 1</span>
+                <button id="back-to-menu-btn" style="margin-left: 20px; padding: 4px 8px; background: #FF6B6B; color: white; border: none; border-radius: 4px; cursor: pointer;">Back to Menu</button>
             </div>
             <div id="player-info">
                 <div class="player-health">
-                    <span>Player 1:</span>
+                    <span>You:</span>
                     <div class="health-bar">
                         <div id="p1-health" class="health-fill"></div>
                     </div>
                     <span id="p1-hp">10/10</span>
                 </div>
                 <div class="player-health">
-                    <span>Player 2:</span>
+                    <span>Opponent:</span>
                     <div class="health-bar">
                         <div id="p2-health" class="health-fill"></div>
                     </div>
@@ -34,13 +50,12 @@
                 </div>
             </div>
             <div id="waiting-message" style="display: none;">Waiting for another player...</div>
-            <div id="lobby-full-message" style="display: none;">Too many fantsos are here please wait your turn</div>
+            <div id="room-full-message" style="display: none;">Room is full! Try creating a new room.</div>
         </div>
         <canvas id="game-canvas" width="800" height="600"></canvas>
         
         <div id="game-instructions">
             <p id="control-instructions">🎮 Mobile: Use joystick controls | 🖱️ Desktop: Drag left side to move, right side to aim</p>
-            <button id="add-player-btn" style="margin-top: 10px; padding: 8px 16px; background: #FF69B4; color: white; border: none; border-radius: 8px; cursor: pointer;">Add AI Player (Test)</button>
         </div>
     </div>
 
@@ -54,6 +69,7 @@
         <button id="play-again-btn" class="play-button">Play Again</button>
     </div>
 
+    <script src="/socket.io/socket.io.js"></script>
     <script src="game.js"></script>
 </body>
 </html>
