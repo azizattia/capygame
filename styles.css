@@ -231,3 +231,50 @@ body {
         font-size: 0.9rem;
     }
 }
+
+/* Mobile Controls */
+#mobile-controls {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: 200px;
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-end;
+    padding: 20px;
+    pointer-events: none;
+    z-index: 1000;
+}
+
+.joystick {
+    width: 100px;
+    height: 100px;
+    background: rgba(255, 255, 255, 0.3);
+    border: 3px solid rgba(255, 255, 255, 0.5);
+    border-radius: 50%;
+    position: relative;
+    pointer-events: all;
+    touch-action: none;
+}
+
+.joystick-knob {
+    width: 40px;
+    height: 40px;
+    background: rgba(255, 105, 180, 0.8);
+    border: 2px solid white;
+    border-radius: 50%;
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    transition: all 0.1s ease;
+}
+
+#move-joystick {
+    margin-bottom: 20px;
+}
+
+#aim-joystick {
+    margin-bottom: 20px;
+}

@@ -17,21 +17,15 @@ class CapybaraGame {
         this.socket = null;
         this.isConnected = false;
         
-        // Drag movement variables
-        this.isDragging = false;
-        this.dragStartX = 0;
-        this.dragStartY = 0;
-        this.dragCurrentX = 0;
-        this.dragCurrentY = 0;
+        // Joystick control variables
+        this.moveJoystick = { x: 0, y: 0, active: false };
+        this.aimJoystick = { x: 0, y: 0, active: false };
         this.movementVector = { x: 0, y: 0 };
+        this.aimVector = { x: 0, y: 0 };
         
-        // Cheese throwing variables
-        this.isThrowing = false;
-        this.throwStartX = 0;
-        this.throwStartY = 0;
-        this.throwCurrentX = 0;
-        this.throwCurrentY = 0;
-        this.throwVector = { x: 0, y: 0 };
+        // Auto shooting
+        this.lastShotTime = 0;
+        this.shootInterval = 3000; // 3 seconds
         
         // Multi-touch support
         this.activeTouches = new Map();
@@ -75,8 +69,10 @@ class CapybaraGame {
     connectSocket() {
         // Use different socket path for production (Vercel) vs local development
         const socketPath = window.location.hostname === 'localhost' ? '/socket.io/' : '/api/socket';
+        const isProduction = window.location.hostname !== 'localhost';
         this.socket = io({
-            path: socketPath
+            path: socketPath,
+            transports: isProduction ? ['polling'] : ['websocket', 'polling']
         });
         
         this.socket.on('connect', () => {
@@ -97,7 +93,7 @@ class CapybaraGame {
             this.removeRemotePlayer(data.playerId);
         });
 
-        this.socket.on('cheese_throw', (data) => {
+        this.socket.on('player_threw', (data) => {
             this.addRemoteCheese(data.cheese);
         });
 
@@ -135,22 +131,108 @@ class CapybaraGame {
         document.getElementById('play-again-btn').addEventListener('click', () => this.resetGame());
         document.getElementById('next-level-btn').addEventListener('click', () => this.nextLevel());
 
-        // Mouse events for drag movement
-        this.canvas.addEventListener('mousedown', (e) => this.handleMouseDown(e));
-        this.canvas.addEventListener('mousemove', (e) => this.handleMouseMove(e));
-        this.canvas.addEventListener('mouseup', (e) => this.handleMouseUp(e));
-        
-        // Touch events for mobile - support multi-touch
-        this.canvas.addEventListener('touchstart', (e) => this.handleTouchStart(e));
-        this.canvas.addEventListener('touchmove', (e) => this.handleTouchMove(e));
-        this.canvas.addEventListener('touchend', (e) => this.handleTouchEnd(e));
-        
-        // Prevent default touch behaviors
-        this.canvas.addEventListener('touchstart', (e) => e.preventDefault());
-        this.canvas.addEventListener('touchmove', (e) => e.preventDefault());
-        this.canvas.addEventListener('touchend', (e) => e.preventDefault());
+        // Setup joystick controls
+        this.setupJoystickControls();
 
         window.addEventListener('resize', () => this.resizeCanvas());
+    }
+
+    setupJoystickControls() {
+        const moveJoystick = document.getElementById('move-joystick');
+        const aimJoystick = document.getElementById('aim-joystick');
+        
+        // Move joystick
+        this.setupJoystick(moveJoystick, (x, y) => {
+            this.moveJoystick.x = x;
+            this.moveJoystick.y = y;
+            this.movementVector.x = x * 3;
+            this.movementVector.y = y * 3;
+        });
+        
+        // Aim joystick  
+        this.setupJoystick(aimJoystick, (x, y) => {
+            this.aimJoystick.x = x;
+            this.aimJoystick.y = y;
+            this.aimVector.x = x;
+            this.aimVector.y = y;
+        });
+    }
+    
+    setupJoystick(joystickElement, onMove) {
+        const knob = joystickElement.querySelector('.joystick-knob');
+        const rect = joystickElement.getBoundingClientRect();
+        const centerX = rect.width / 2;
+        const centerY = rect.height / 2;
+        const maxDistance = centerX - 20;
+        
+        let isActive = false;
+        
+        const handleStart = (clientX, clientY) => {
+            isActive = true;
+            joystickElement.style.opacity = '1';
+        };
+        
+        const handleMove = (clientX, clientY) => {
+            if (!isActive) return;
+            
+            const rect = joystickElement.getBoundingClientRect();
+            const x = clientX - rect.left - centerX;
+            const y = clientY - rect.top - centerY;
+            
+            const distance = Math.sqrt(x * x + y * y);
+            
+            if (distance <= maxDistance) {
+                knob.style.left = `${centerX + x}px`;
+                knob.style.top = `${centerY + y}px`;
+                onMove(x / maxDistance, y / maxDistance);
+            } else {
+                const angle = Math.atan2(y, x);
+                const limitedX = Math.cos(angle) * maxDistance;
+                const limitedY = Math.sin(angle) * maxDistance;
+                knob.style.left = `${centerX + limitedX}px`;
+                knob.style.top = `${centerY + limitedY}px`;
+                onMove(limitedX / maxDistance, limitedY / maxDistance);
+            }
+        };
+        
+        const handleEnd = () => {
+            isActive = false;
+            joystickElement.style.opacity = '0.7';
+            knob.style.left = '50%';
+            knob.style.top = '50%';
+            onMove(0, 0);
+        };
+        
+        // Mouse events
+        joystickElement.addEventListener('mousedown', (e) => {
+            handleStart(e.clientX, e.clientY);
+        });
+        
+        document.addEventListener('mousemove', (e) => {
+            handleMove(e.clientX, e.clientY);
+        });
+        
+        document.addEventListener('mouseup', handleEnd);
+        
+        // Touch events
+        joystickElement.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            const touch = e.touches[0];
+            handleStart(touch.clientX, touch.clientY);
+        });
+        
+        document.addEventListener('touchmove', (e) => {
+            e.preventDefault();
+            if (e.touches.length > 0) {
+                const touch = e.touches[0];
+                handleMove(touch.clientX, touch.clientY);
+            }
+        });
+        
+        document.addEventListener('touchend', (e) => {
+            e.preventDefault();
+            handleEnd();
+        });
     }
 
     showRoomSetup() {
@@ -538,9 +620,23 @@ class CapybaraGame {
         });
         
         this.updateCurrentPlayer();
+        this.handleAutoShooting();
         this.updateProjectiles();
         this.checkCollisions();
         this.checkGameEnd();
+    }
+    
+    handleAutoShooting() {
+        if (!this.currentPlayer || this.gameState !== 'playing') return;
+        
+        const currentTime = Date.now();
+        if (currentTime - this.lastShotTime >= this.shootInterval) {
+            // Only shoot if aiming or if there's any aim input
+            if (Math.abs(this.aimVector.x) > 0.1 || Math.abs(this.aimVector.y) > 0.1) {
+                this.throwCheese();
+                this.lastShotTime = currentTime;
+            }
+        }
     }
 
     updateCurrentPlayer() {
@@ -591,18 +687,20 @@ class CapybaraGame {
         }
     }
 
-    throwCheese(player) {
-        player.throwCooldown = 45;
+    throwCheese() {
+        if (!this.currentPlayer || this.currentPlayer.throwCooldown > 0) return;
+        
+        this.currentPlayer.throwCooldown = 45;
         
         const cheese = {
-            x: player.x + player.width / 2,
-            y: player.y + player.height / 2,
+            x: this.currentPlayer.x + this.currentPlayer.width / 2,
+            y: this.currentPlayer.y + this.currentPlayer.height / 2,
             width: 12,
             height: 12,
             speed: 6,
-            dx: this.throwVector.x,
-            dy: this.throwVector.y,
-            owner: player.id,
+            dx: this.aimVector.x,
+            dy: this.aimVector.y,
+            owner: this.currentPlayer.id,
             life: 120,
             id: Math.random().toString(36).substr(2, 9)
         };
@@ -611,7 +709,7 @@ class CapybaraGame {
         
         // Send cheese throw to other players
         if (this.isConnected && this.socket) {
-            this.socket.emit('cheese_throw', {
+            this.socket.emit('player_throw', {
                 playerId: this.playerId,
                 cheese: cheese
             });
