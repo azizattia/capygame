@@ -81,9 +81,22 @@ class CapybaraGame {
 
     connectSocket() {
         // Detect environment and use appropriate server
-        const isProduction = window.location.hostname !== 'localhost';
-        const serverUrl = isProduction ? 'https://capygame-production.up.railway.app' : 'http://localhost:3000';
-        const socketPath = isProduction ? '/socket.io/' : '/socket.io/';
+        const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+        
+        let serverUrl;
+        if (isLocal) {
+            serverUrl = 'http://localhost:3000';
+        } else if (window.location.hostname.includes('onrender.com')) {
+            // Running on Render.com - use current domain
+            serverUrl = window.location.origin;
+        } else if (window.location.hostname.includes('railway.app')) {
+            serverUrl = 'https://capygame-production.up.railway.app';
+        } else {
+            // Fallback to current domain for other hosts
+            serverUrl = window.location.origin;
+        }
+        
+        const socketPath = '/socket.io/';
         
         console.log('Connecting to:', serverUrl, 'with path:', socketPath);
         
