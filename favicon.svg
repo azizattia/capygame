@@ -1,0 +1,18 @@
+<svg width="32" height="32" viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg">
+  <!-- Capybara body -->
+  <rect x="6" y="12" width="20" height="16" rx="8" fill="#D2691E"/>
+  <!-- Capybara head -->
+  <ellipse cx="16" cy="10" rx="8" ry="6" fill="#D2691E"/>
+  <!-- Eyes -->
+  <circle cx="13" cy="8" r="2" fill="#000"/>
+  <circle cx="19" cy="8" r="2" fill="#000"/>
+  <!-- Nose -->
+  <ellipse cx="16" cy="11" rx="1" ry="0.5" fill="#000"/>
+  <!-- Ears -->
+  <ellipse cx="11" cy="5" rx="2" ry="3" fill="#8B4513"/>
+  <ellipse cx="21" cy="5" rx="2" ry="3" fill="#8B4513"/>
+  <!-- Cheese -->
+  <rect x="24" y="4" width="6" height="6" fill="#FFD700"/>
+  <rect x="25" y="5" width="1" height="1" fill="#FFA500"/>
+  <rect x="27" y="7" width="1" height="1" fill="#FFA500"/>
+</svg>
