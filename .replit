@@ -1,0 +1,11 @@
+run = "npm start"
+entrypoint = "server.js"
+
+[nix]
+channel = "stable-21_11"
+
+[nix.env]
+PORT = "3000"
+
+[deployment]
+run = ["sh", "-c", "npm start"]

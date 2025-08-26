@@ -1,0 +1,20 @@
+EASIEST SOLUTION - Use Glitch.com:
+
+1. Go to https://glitch.com/
+2. Click "New Project" > "Import from GitHub"  
+3. Paste: https://github.com/azizattia/capygame
+4. It will auto-create a live server at: https://your-project-name.glitch.me
+5. The game will work perfectly with real WebSockets
+
+Glitch is perfect because:
+- Always-on server (not serverless junk)
+- Perfect for Socket.IO multiplayer games
+- Zero configuration
+- Free and reliable
+- Auto-restarts if crashes
+
+Alternative quick fix for RIGHT NOW:
+Use ngrok to expose your local server:
+1. Download ngrok
+2. Run: ngrok http 3000
+3. Use the https URL it gives you

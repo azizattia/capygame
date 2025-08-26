@@ -18,6 +18,21 @@ const io = new Server(server, {
 
 app.use(express.static(path.join(__dirname)));
 
+// Health check endpoint
+app.get('/health', (req, res) => {
+  res.json({ 
+    status: 'healthy', 
+    uptime: process.uptime(), 
+    rooms: gameRooms.size,
+    timestamp: new Date().toISOString() 
+  });
+});
+
+// Root endpoint
+app.get('/', (req, res) => {
+  res.sendFile(path.join(__dirname, 'index.html'));
+});
+
 const gameRooms = new Map();
 
 io.on('connection', (socket) => {

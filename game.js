@@ -80,9 +80,16 @@ class CapybaraGame {
     }
 
     connectSocket() {
-        this.socket = io({
-            path: "/api/socket",
-            transports: ['polling', 'websocket'],
+        // Detect environment and use appropriate server
+        const isProduction = window.location.hostname !== 'localhost';
+        const serverUrl = isProduction ? 'https://capygame-production.up.railway.app' : 'http://localhost:3000';
+        const socketPath = isProduction ? '/socket.io/' : '/socket.io/';
+        
+        console.log('Connecting to:', serverUrl, 'with path:', socketPath);
+        
+        this.socket = io(serverUrl, {
+            path: socketPath,
+            transports: ['websocket', 'polling'],
             timeout: 20000,
             forceNew: true
         });
