@@ -947,16 +947,19 @@ class CapybaraGame {
             const newX = playerData.x || playerData.player?.x;
             const newY = playerData.y || playerData.player?.y;
             
+            console.log(`Updating remote player ${player.id}: from (${player.x}, ${player.y}) to (${newX}, ${newY})`);
+            
             // Don't allow teleportation - only allow reasonable movement distances
-            const maxMovement = 20; // Max pixels per update
+            const maxMovement = 50; // INCREASED from 20 - was too restrictive
             const dx = Math.abs(newX - player.x);
             const dy = Math.abs(newY - player.y);
             
             if (dx < maxMovement && dy < maxMovement) {
                 player.x = newX;
                 player.y = newY;
+                console.log(`✅ Remote player ${player.id} moved to (${newX}, ${newY})`);
             } else {
-                console.log(`Prevented teleportation for ${player.id}: (${dx}, ${dy})`);
+                console.log(`❌ Prevented teleportation for ${player.id}: (${dx}, ${dy}) > ${maxMovement}`);
             }
             
             player.health = playerData.health || playerData.player?.health;
