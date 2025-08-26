@@ -12,6 +12,9 @@ class CapybaraGame {
         this.maxLevel = 5;
         this.cheeseProjectiles = [];
         this.walls = [];
+        this.gameRoom = 'capygame_room_1'; // Shared room ID
+        this.lastUpdateTime = 0;
+        this.updateInterval = null;
         
         // Drag movement variables
         this.isDragging = false;
@@ -66,6 +69,7 @@ class CapybaraGame {
         document.getElementById('play-btn').addEventListener('click', () => this.startGame());
         document.getElementById('play-again-btn').addEventListener('click', () => this.resetGame());
         document.getElementById('next-level-btn').addEventListener('click', () => this.nextLevel());
+        document.getElementById('add-player-btn').addEventListener('click', () => this.addTestPlayer());
 
         // Mouse events for drag movement
         this.canvas.addEventListener('mousedown', (e) => this.handleMouseDown(e));
@@ -256,6 +260,7 @@ class CapybaraGame {
         this.loadLevel();
         this.createPlayer();
         this.joinLobby();
+        this.startMultiplayerSync();
     }
 
     loadLevel() {
@@ -276,7 +281,8 @@ class CapybaraGame {
             maxHealth: 10,
             speed: 3,
             facing: 'right',
-            throwCooldown: 0
+            throwCooldown: 0,
+            lastUpdate: Date.now()
         };
         
         this.players.set(this.playerId, this.currentPlayer);
@@ -301,44 +307,166 @@ class CapybaraGame {
     }
 
     joinLobby() {
-        if (!this.lobby) {
-            this.lobby = {
-                players: new Map(),
-                capacity: 2,
-                gameStarted: false
-            };
+        // Initialize shared game state
+        const gameState = this.getSharedGameState();
+        
+        if (!gameState.players) {
+            gameState.players = {};
         }
         
-        if (this.lobby.players.size >= this.lobby.capacity) {
-            document.getElementById('lobby-full-message').style.display = 'block';
+        if (!gameState.cheeseProjectiles) {
+            gameState.cheeseProjectiles = [];
+        }
+        
+        if (!gameState.gameStarted) {
+            gameState.gameStarted = false;
+        }
+        
+        if (!gameState.currentLevel) {
+            gameState.currentLevel = this.currentLevel;
+        }
+        
+        // Add current player to shared state
+        gameState.players[this.playerId] = this.currentPlayer;
+        
+        // Check if we have 2 players
+        const playerCount = Object.keys(gameState.players).length;
+        
+        if (playerCount >= 2) {
+            gameState.gameStarted = true;
+            this.gameStarted = true;
+            this.gameState = 'playing';
             document.getElementById('waiting-message').style.display = 'none';
-            
-            setTimeout(() => {
-                this.checkLobbySpace();
-            }, 1000);
-            return;
-        }
-        
-        this.lobby.players.set(this.playerId, this.currentPlayer);
-        this.cheeseProjectiles = [];
-        
-        // Only start when 2 real players join
-        if (this.lobby.players.size === 2) {
-            this.startGamePlay();
+            this.updateHealthUI();
         } else {
             document.getElementById('waiting-message').style.display = 'block';
             document.getElementById('lobby-full-message').style.display = 'none';
         }
+        
+        this.saveSharedGameState(gameState);
     }
 
-    checkLobbySpace() {
-        if (this.lobby && this.lobby.players.size < this.lobby.capacity) {
-            this.joinLobby();
-        } else {
-            setTimeout(() => {
-                this.checkLobbySpace();
-            }, 1000);
+    startMultiplayerSync() {
+        // Sync with other players every 50ms
+        this.updateInterval = setInterval(() => {
+            this.syncWithOtherPlayers();
+        }, 50);
+    }
+
+    syncWithOtherPlayers() {
+        const gameState = this.getSharedGameState();
+        
+        if (!gameState.players) return;
+        
+        // Update local players map with all players from shared state
+        this.players.clear();
+        Object.keys(gameState.players).forEach(playerId => {
+            const player = gameState.players[playerId];
+            this.players.set(playerId, player);
+            
+            // Update current player reference
+            if (playerId === this.playerId) {
+                this.currentPlayer = player;
+            }
+        });
+        
+        // Update cheese projectiles
+        if (gameState.cheeseProjectiles) {
+            this.cheeseProjectiles = gameState.cheeseProjectiles;
         }
+        
+        // Check if game started
+        if (gameState.gameStarted && !this.gameStarted) {
+            this.gameStarted = true;
+            this.gameState = 'playing';
+            document.getElementById('waiting-message').style.display = 'none';
+        }
+        
+        // Update current level
+        if (gameState.currentLevel && gameState.currentLevel !== this.currentLevel) {
+            this.currentLevel = gameState.currentLevel;
+            this.loadLevel();
+        }
+        
+        this.updateHealthUI();
+    }
+
+    getSharedGameState() {
+        try {
+            const state = localStorage.getItem(this.gameRoom);
+            return state ? JSON.parse(state) : {};
+        } catch (e) {
+            return {};
+        }
+    }
+
+    saveSharedGameState(gameState) {
+        try {
+            localStorage.setItem(this.gameRoom, JSON.stringify(gameState));
+        } catch (e) {
+            console.error('Failed to save game state:', e);
+        }
+    }
+
+    addTestPlayer() {
+        if (this.gameState !== 'waiting') return;
+        
+        const spawnPoints = this.getSpawnPoints();
+        const testPlayerId = 'test_player_' + Math.random().toString(36).substr(2, 9);
+        
+        const testPlayer = {
+            id: testPlayerId,
+            x: spawnPoints[1] ? spawnPoints[1].x : this.canvas.width - 100,
+            y: spawnPoints[1] ? spawnPoints[1].y : this.canvas.height - 100,
+            width: 50,
+            height: 50,
+            health: 10,
+            maxHealth: 10,
+            speed: 3,
+            facing: 'left',
+            throwCooldown: 0,
+            lastUpdate: Date.now()
+        };
+        
+        // Add to shared game state
+        const gameState = this.getSharedGameState();
+        if (!gameState.players) gameState.players = {};
+        gameState.players[testPlayerId] = testPlayer;
+        
+        // Check if we have 2 players now
+        const playerCount = Object.keys(gameState.players).length;
+        
+        if (playerCount >= 2) {
+            gameState.gameStarted = true;
+            this.gameStarted = true;
+            this.gameState = 'playing';
+            document.getElementById('waiting-message').style.display = 'none';
+            this.updateHealthUI();
+        }
+        
+        this.saveSharedGameState(gameState);
+        
+        // Hide the button after adding a test player
+        document.getElementById('add-player-btn').style.display = 'none';
+    }
+
+    updateSharedGameState() {
+        if (!this.currentPlayer) return;
+        
+        const gameState = this.getSharedGameState();
+        
+        // Update current player in shared state
+        if (!gameState.players) gameState.players = {};
+        gameState.players[this.playerId] = this.currentPlayer;
+        
+        // Update cheese projectiles
+        gameState.cheeseProjectiles = this.cheeseProjectiles;
+        
+        // Update game state
+        gameState.gameStarted = this.gameStarted;
+        gameState.currentLevel = this.currentLevel;
+        
+        this.saveSharedGameState(gameState);
     }
 
     startGamePlay() {
@@ -362,6 +490,9 @@ class CapybaraGame {
         this.updateProjectiles();
         this.checkCollisions();
         this.checkGameEnd();
+        
+        // Update shared game state
+        this.updateSharedGameState();
     }
 
     updateCurrentPlayer() {
@@ -394,6 +525,9 @@ class CapybaraGame {
         if (!this.isPointInWall(player.x, newY, player.width, player.height)) {
             player.y = newY;
         }
+        
+        // Update timestamp
+        player.lastUpdate = Date.now();
     }
 
     throwCheese(player) {
@@ -408,7 +542,8 @@ class CapybaraGame {
             dx: this.throwVector.x,
             dy: this.throwVector.y,
             owner: player.id,
-            life: 120
+            life: 120,
+            id: Math.random().toString(36).substr(2, 9)
         };
         
         this.cheeseProjectiles.push(cheese);
@@ -517,8 +652,10 @@ class CapybaraGame {
         this.gameState = 'waiting';
         this.players.clear();
         this.currentPlayer = null;
-        this.lobby = null;
         this.cheeseProjectiles = [];
+        
+        // Clear shared game state
+        localStorage.removeItem(this.gameRoom);
         
         this.loadLevel();
         this.createPlayer();
@@ -529,10 +666,18 @@ class CapybaraGame {
         this.gameState = 'menu';
         this.players.clear();
         this.currentPlayer = null;
-        this.lobby = null;
         this.gameStarted = false;
         this.currentLevel = 1;
         this.cheeseProjectiles = [];
+        
+        // Clear shared game state
+        localStorage.removeItem(this.gameRoom);
+        
+        // Stop multiplayer sync
+        if (this.updateInterval) {
+            clearInterval(this.updateInterval);
+            this.updateInterval = null;
+        }
         
         document.getElementById('game-over').style.display = 'none';
         document.getElementById('level-complete').style.display = 'none';
@@ -626,7 +771,13 @@ class CapybaraGame {
     drawCapybara(player) {
         this.ctx.save();
         
-        this.ctx.fillStyle = '#D2691E';
+        // Different colors for different players
+        if (player.id === this.playerId) {
+            this.ctx.fillStyle = '#D2691E'; // Brown for current player
+        } else {
+            this.ctx.fillStyle = '#4169E1'; // Blue for other players
+        }
+        
         this.ctx.fillRect(player.x, player.y, player.width, player.height);
         
         this.ctx.fillStyle = '#CD853F';
