@@ -1,7 +1,7 @@
 {
   "functions": {
     "api/socket.js": {
-      "runtime": "nodejs@18.x"
+      "runtime": "nodejs18.x"
     }
   },
   "rewrites": [

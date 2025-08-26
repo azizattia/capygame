@@ -69,23 +69,7 @@
         <button id="play-again-btn" class="play-button">Play Again</button>
     </div>
 
-    <script>
-        // Load Socket.IO from local server in development, CDN in production
-        const socketScript = document.createElement('script');
-        if (window.location.hostname === 'localhost') {
-            socketScript.src = '/socket.io/socket.io.js';
-        } else {
-            socketScript.src = 'https://cdn.socket.io/4.7.5/socket.io.min.js';
-        }
-        
-        // Load game script after Socket.IO is loaded
-        socketScript.onload = function() {
-            const gameScript = document.createElement('script');
-            gameScript.src = 'game.js';
-            document.body.appendChild(gameScript);
-        };
-        
-        document.head.appendChild(socketScript);
-    </script>
+    <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+    <script src="game.js"></script>
 </body>
 </html>
