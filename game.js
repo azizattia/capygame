@@ -6,15 +6,14 @@ class CapybaraGame {
         this.players = new Map();
         this.playerId = Math.random().toString(36).substr(2, 9);
         this.currentPlayer = null;
-        this.lobby = null;
         this.gameStarted = false;
         this.currentLevel = 1;
         this.maxLevel = 5;
         this.cheeseProjectiles = [];
         this.walls = [];
-        this.gameRoom = 'capygame_room_1'; // Shared room ID
-        this.lastUpdateTime = 0;
-        this.updateInterval = null;
+        this.gameRoom = this.getRoomFromURL() || 'capygame_room_1';
+        this.isHost = false;
+        this.localPlayers = [];
         
         // Drag movement variables
         this.isDragging = false;
@@ -56,6 +55,11 @@ class CapybaraGame {
         this.init();
     }
 
+    getRoomFromURL() {
+        const urlParams = new URLSearchParams(window.location.search);
+        return urlParams.get('room');
+    }
+
     init() {
         this.canvas = document.getElementById('game-canvas');
         this.ctx = this.canvas.getContext('2d');
@@ -69,7 +73,7 @@ class CapybaraGame {
         document.getElementById('play-btn').addEventListener('click', () => this.startGame());
         document.getElementById('play-again-btn').addEventListener('click', () => this.resetGame());
         document.getElementById('next-level-btn').addEventListener('click', () => this.nextLevel());
-        document.getElementById('add-player-btn').addEventListener('click', () => this.addTestPlayer());
+        document.getElementById('add-player-btn').addEventListener('click', () => this.addLocalPlayer());
 
         // Mouse events for drag movement
         this.canvas.addEventListener('mousedown', (e) => this.handleMouseDown(e));
@@ -260,7 +264,6 @@ class CapybaraGame {
         this.loadLevel();
         this.createPlayer();
         this.joinLobby();
-        this.startMultiplayerSync();
     }
 
     loadLevel() {
@@ -282,7 +285,7 @@ class CapybaraGame {
             speed: 3,
             facing: 'right',
             throwCooldown: 0,
-            lastUpdate: Date.now()
+            isLocal: true
         };
         
         this.players.set(this.playerId, this.currentPlayer);
@@ -307,115 +310,37 @@ class CapybaraGame {
     }
 
     joinLobby() {
-        // Initialize shared game state
-        const gameState = this.getSharedGameState();
+        // Check if we have enough players to start
+        const totalPlayers = this.players.size + this.localPlayers.length;
         
-        if (!gameState.players) {
-            gameState.players = {};
-        }
-        
-        if (!gameState.cheeseProjectiles) {
-            gameState.cheeseProjectiles = [];
-        }
-        
-        if (!gameState.gameStarted) {
-            gameState.gameStarted = false;
-        }
-        
-        if (!gameState.currentLevel) {
-            gameState.currentLevel = this.currentLevel;
-        }
-        
-        // Add current player to shared state
-        gameState.players[this.playerId] = this.currentPlayer;
-        
-        // Check if we have 2 players
-        const playerCount = Object.keys(gameState.players).length;
-        
-        if (playerCount >= 2) {
-            gameState.gameStarted = true;
-            this.gameStarted = true;
-            this.gameState = 'playing';
-            document.getElementById('waiting-message').style.display = 'none';
-            this.updateHealthUI();
+        if (totalPlayers >= 2) {
+            this.startGamePlay();
         } else {
             document.getElementById('waiting-message').style.display = 'block';
             document.getElementById('lobby-full-message').style.display = 'none';
-        }
-        
-        this.saveSharedGameState(gameState);
-    }
-
-    startMultiplayerSync() {
-        // Sync with other players every 50ms
-        this.updateInterval = setInterval(() => {
-            this.syncWithOtherPlayers();
-        }, 50);
-    }
-
-    syncWithOtherPlayers() {
-        const gameState = this.getSharedGameState();
-        
-        if (!gameState.players) return;
-        
-        // Update local players map with all players from shared state
-        this.players.clear();
-        Object.keys(gameState.players).forEach(playerId => {
-            const player = gameState.players[playerId];
-            this.players.set(playerId, player);
             
-            // Update current player reference
-            if (playerId === this.playerId) {
-                this.currentPlayer = player;
-            }
-        });
-        
-        // Update cheese projectiles
-        if (gameState.cheeseProjectiles) {
-            this.cheeseProjectiles = gameState.cheeseProjectiles;
-        }
-        
-        // Check if game started
-        if (gameState.gameStarted && !this.gameStarted) {
-            this.gameStarted = true;
-            this.gameState = 'playing';
-            document.getElementById('waiting-message').style.display = 'none';
-        }
-        
-        // Update current level
-        if (gameState.currentLevel && gameState.currentLevel !== this.currentLevel) {
-            this.currentLevel = gameState.currentLevel;
-            this.loadLevel();
-        }
-        
-        this.updateHealthUI();
-    }
-
-    getSharedGameState() {
-        try {
-            const state = localStorage.getItem(this.gameRoom);
-            return state ? JSON.parse(state) : {};
-        } catch (e) {
-            return {};
+            // Show room code for sharing
+            this.showRoomCode();
         }
     }
 
-    saveSharedGameState(gameState) {
-        try {
-            localStorage.setItem(this.gameRoom, JSON.stringify(gameState));
-        } catch (e) {
-            console.error('Failed to save game state:', e);
-        }
+    showRoomCode() {
+        const roomUrl = `${window.location.origin}${window.location.pathname}?room=${this.gameRoom}`;
+        const waitingMessage = document.getElementById('waiting-message');
+        waitingMessage.innerHTML = `
+            Waiting for another player...<br>
+            <small>Share this link: <a href="${roomUrl}" target="_blank">${roomUrl}</a></small>
+        `;
     }
 
-    addTestPlayer() {
+    addLocalPlayer() {
         if (this.gameState !== 'waiting') return;
         
         const spawnPoints = this.getSpawnPoints();
-        const testPlayerId = 'test_player_' + Math.random().toString(36).substr(2, 9);
+        const localPlayerId = 'local_player_' + Math.random().toString(36).substr(2, 9);
         
-        const testPlayer = {
-            id: testPlayerId,
+        const localPlayer = {
+            id: localPlayerId,
             x: spawnPoints[1] ? spawnPoints[1].x : this.canvas.width - 100,
             y: spawnPoints[1] ? spawnPoints[1].y : this.canvas.height - 100,
             width: 50,
@@ -425,48 +350,28 @@ class CapybaraGame {
             speed: 3,
             facing: 'left',
             throwCooldown: 0,
-            lastUpdate: Date.now()
+            isLocal: true,
+            isAI: true,
+            aiTimer: 0,
+            aiTargetX: spawnPoints[1] ? spawnPoints[1].x : this.canvas.width - 100,
+            aiTargetY: spawnPoints[1] ? spawnPoints[1].y : this.canvas.height - 100
         };
         
-        // Add to shared game state
-        const gameState = this.getSharedGameState();
-        if (!gameState.players) gameState.players = {};
-        gameState.players[testPlayerId] = testPlayer;
+        this.localPlayers.push(localPlayer);
+        this.players.set(localPlayerId, localPlayer);
         
         // Check if we have 2 players now
-        const playerCount = Object.keys(gameState.players).length;
+        const totalPlayers = this.players.size;
         
-        if (playerCount >= 2) {
-            gameState.gameStarted = true;
+        if (totalPlayers >= 2) {
             this.gameStarted = true;
             this.gameState = 'playing';
             document.getElementById('waiting-message').style.display = 'none';
             this.updateHealthUI();
         }
         
-        this.saveSharedGameState(gameState);
-        
-        // Hide the button after adding a test player
+        // Hide the button after adding a local player
         document.getElementById('add-player-btn').style.display = 'none';
-    }
-
-    updateSharedGameState() {
-        if (!this.currentPlayer) return;
-        
-        const gameState = this.getSharedGameState();
-        
-        // Update current player in shared state
-        if (!gameState.players) gameState.players = {};
-        gameState.players[this.playerId] = this.currentPlayer;
-        
-        // Update cheese projectiles
-        gameState.cheeseProjectiles = this.cheeseProjectiles;
-        
-        // Update game state
-        gameState.gameStarted = this.gameStarted;
-        gameState.currentLevel = this.currentLevel;
-        
-        this.saveSharedGameState(gameState);
     }
 
     startGamePlay() {
@@ -487,12 +392,10 @@ class CapybaraGame {
         });
         
         this.updateCurrentPlayer();
+        this.updateLocalPlayers();
         this.updateProjectiles();
         this.checkCollisions();
         this.checkGameEnd();
-        
-        // Update shared game state
-        this.updateSharedGameState();
     }
 
     updateCurrentPlayer() {
@@ -525,9 +428,93 @@ class CapybaraGame {
         if (!this.isPointInWall(player.x, newY, player.width, player.height)) {
             player.y = newY;
         }
-        
-        // Update timestamp
-        player.lastUpdate = Date.now();
+    }
+
+    updateLocalPlayers() {
+        this.localPlayers.forEach(player => {
+            if (!player.isAI) return;
+            
+            player.aiTimer++;
+            
+            // Simple AI behavior
+            const target = this.currentPlayer;
+            if (!target) return;
+            
+            const dx = target.x - player.x;
+            const dy = target.y - player.y;
+            const distance = Math.sqrt(dx * dx + dy * dy);
+            
+            // Change AI target every 2 seconds
+            if (player.aiTimer % 120 === 0) {
+                if (Math.random() < 0.7) {
+                    // Move towards player
+                    player.aiTargetX = target.x + (Math.random() - 0.5) * 100;
+                    player.aiTargetY = target.y + (Math.random() - 0.5) * 100;
+                } else {
+                    // Move to random position
+                    player.aiTargetX = Math.random() * (this.canvas.width - 100);
+                    player.aiTargetY = Math.random() * (this.canvas.height - 100);
+                }
+            }
+            
+            // Move towards target
+            const targetDx = player.aiTargetX - player.x;
+            const targetDy = player.aiTargetY - player.y;
+            
+            let newX = player.x;
+            let newY = player.y;
+            
+            if (Math.abs(targetDx) > 5) {
+                if (targetDx > 0) {
+                    newX += player.speed;
+                    player.facing = 'right';
+                } else {
+                    newX -= player.speed;
+                    player.facing = 'left';
+                }
+            }
+            
+            if (Math.abs(targetDy) > 5) {
+                if (targetDy > 0) {
+                    newY += player.speed;
+                } else {
+                    newY -= player.speed;
+                }
+            }
+            
+            // Apply movement with collision detection
+            if (!this.isPointInWall(newX, player.y, player.width, player.height)) {
+                player.x = Math.max(0, Math.min(this.canvas.width - player.width, newX));
+            }
+            if (!this.isPointInWall(player.x, newY, player.width, player.height)) {
+                player.y = Math.max(0, Math.min(this.canvas.height - player.height, newY));
+            }
+            
+            // Throw cheese at player if close enough
+            if (distance < 200 && player.throwCooldown <= 0 && Math.random() < 0.01) {
+                const throwDx = target.x - player.x;
+                const throwDy = target.y - player.y;
+                const throwDistance = Math.sqrt(throwDx * throwDx + throwDy * throwDy);
+                
+                if (throwDistance > 0) {
+                    const cheese = {
+                        x: player.x + player.width / 2,
+                        y: player.y + player.height / 2,
+                        width: 12,
+                        height: 12,
+                        speed: 6,
+                        dx: throwDx / throwDistance,
+                        dy: throwDy / throwDistance,
+                        owner: player.id,
+                        life: 120,
+                        id: Math.random().toString(36).substr(2, 9)
+                    };
+                    
+                    this.cheeseProjectiles.push(cheese);
+                    player.throwCooldown = 45;
+                }
+            }
+        });
     }
 
     throwCheese(player) {
@@ -652,10 +639,8 @@ class CapybaraGame {
         this.gameState = 'waiting';
         this.players.clear();
         this.currentPlayer = null;
+        this.localPlayers = [];
         this.cheeseProjectiles = [];
-        
-        // Clear shared game state
-        localStorage.removeItem(this.gameRoom);
         
         this.loadLevel();
         this.createPlayer();
@@ -666,18 +651,10 @@ class CapybaraGame {
         this.gameState = 'menu';
         this.players.clear();
         this.currentPlayer = null;
+        this.localPlayers = [];
         this.gameStarted = false;
         this.currentLevel = 1;
         this.cheeseProjectiles = [];
-        
-        // Clear shared game state
-        localStorage.removeItem(this.gameRoom);
-        
-        // Stop multiplayer sync
-        if (this.updateInterval) {
-            clearInterval(this.updateInterval);
-            this.updateInterval = null;
-        }
         
         document.getElementById('game-over').style.display = 'none';
         document.getElementById('level-complete').style.display = 'none';
