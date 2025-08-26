@@ -844,7 +844,7 @@ class CapybaraGame {
             height: 50,
             health: 10,
             maxHealth: 10,
-            speed: 2,
+            speed: 2, // SAME for everyone
             facing: 'right',
             throwCooldown: 0,
             isLocal: true,
@@ -853,18 +853,21 @@ class CapybaraGame {
             hasShield: false,
             speedBoostTime: 0,
             rapidFireTime: 0,
-            originalSpeed: 2
+            originalSpeed: 2 // SAME base speed
         };
+        
+        console.log(`Created local player with speed: ${this.currentPlayer.speed}`);
         
         this.players.set(this.playerId, this.currentPlayer);
     }
 
     getSpawnPoints() {
         const points = [
-            { x: 50, y: 50 },
-            { x: this.canvas.width - 100, y: this.canvas.height - 100 }
+            { x: 50, y: 50, id: 'top-left' },                    // Top left for first player
+            { x: this.canvas.width - 100, y: this.canvas.height - 100, id: 'bottom-right' } // Bottom right for second player
         ];
         
+        // Filter out points that are in walls, but keep IDs
         return points.filter(point => !this.isPointInWall(point.x, point.y, 50, 50));
     }
 
@@ -886,9 +889,9 @@ class CapybaraGame {
             y: spawnPoints[1] ? spawnPoints[1].y : playerData.y,
             width: 50,
             height: 50,
-            health: playerData.health,
-            maxHealth: playerData.maxHealth,
-            speed: 2,
+            health: 10, // FORCE same health
+            maxHealth: 10, // FORCE same max health
+            speed: 2, // FORCE same speed
             facing: playerData.facing,
             throwCooldown: 0,
             isLocal: false,
@@ -897,8 +900,10 @@ class CapybaraGame {
             hasShield: false,
             speedBoostTime: 0,
             rapidFireTime: 0,
-            originalSpeed: 2
+            originalSpeed: 2 // FORCE same base speed
         };
+        
+        console.log(`Added remote player with speed: ${remotePlayer.speed} at (${remotePlayer.x}, ${remotePlayer.y})`);
         
         this.players.set(playerData.id, remotePlayer);
         this.updateHealthUI();
@@ -1001,10 +1006,13 @@ class CapybaraGame {
         let newY = player.y;
         let moved = false;
         
-        // Apply drag movement
+        // Apply drag movement with consistent speed
+        const baseSpeed = 2; // Force consistent speed for all players
         if (this.movementVector.x !== 0 || this.movementVector.y !== 0) {
-            newX += this.movementVector.x * player.speed;
-            newY += this.movementVector.y * player.speed;
+            // Use baseSpeed unless player has speed boost powerup
+            const currentSpeed = player.speedBoostTime > 0 ? player.speed : baseSpeed;
+            newX += this.movementVector.x * currentSpeed;
+            newY += this.movementVector.y * currentSpeed;
             moved = true;
             
             // Update facing direction
@@ -1204,25 +1212,38 @@ class CapybaraGame {
         // Load new level layout
         this.loadLevel();
         
-        // Reset ALL players' health and positions (don't clear the players map)
+        // Reset ALL players' health and positions (maintain consistent spawns)
+        const spawnPoints = this.getSpawnPoints();
+        let playerIndex = 0;
+        
         this.players.forEach(player => {
-            const spawnPoints = this.getSpawnPoints();
+            // Assign spawn points consistently
+            const spawnPoint = spawnPoints[playerIndex % spawnPoints.length];
+            
+            // Current player always gets first spawn (top-left)
             if (player.isLocal) {
                 player.x = spawnPoints[0].x;
                 player.y = spawnPoints[0].y;
             } else {
+                // Other players get subsequent spawns
                 player.x = spawnPoints[1] ? spawnPoints[1].x : spawnPoints[0].x;
                 player.y = spawnPoints[1] ? spawnPoints[1].y : spawnPoints[0].y;
             }
             
-            // Reset health and effects
-            player.health = player.maxHealth;
+            playerIndex++;
+            
+            // Reset health and effects to EQUAL stats
+            player.health = 10;
+            player.maxHealth = 10;
+            player.speed = 2; // SAME for everyone
+            player.originalSpeed = 2;
             player.shieldTime = 0;
             player.hasShield = false;
             player.speedBoostTime = 0;
             player.rapidFireTime = 0;
-            player.speed = player.originalSpeed;
             player.throwCooldown = 0;
+            
+            console.log(`Reset player ${player.id} at (${player.x}, ${player.y}) with speed ${player.speed}`);
         });
         
         // Update UI immediately
