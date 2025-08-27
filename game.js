@@ -459,8 +459,8 @@ class CapybaraGame {
             this.moveJoystick.x = x;
             this.moveJoystick.y = y;
             
-            // FORCE SAME sensitivity for all players
-            const sensitivity = 1.5; // REDUCED from 2.5 to slow down lobby creator
+            // FORCE SAME sensitivity across platforms
+            const sensitivity = 2.0; // INCREASED to match drag movement speed
             this.movementVector.x = x * sensitivity;
             this.movementVector.y = y * sensitivity;
             
@@ -1042,18 +1042,19 @@ class CapybaraGame {
         let newY = player.y;
         let moved = false;
         
-        // Apply drag movement with FORCED equal speed for LOCAL PLAYER ONLY
+        // Apply movement with EQUAL speed for ALL platforms (PC/Mobile)
         if ((this.movementVector.x !== 0 || this.movementVector.y !== 0) && player.isLocal) {
-            // MUCH SLOWER speed to match network lag of remote players
-            const forceEqualSpeed = 1.2; // REDUCED from 2 to match remote player speed
-            newX += this.movementVector.x * forceEqualSpeed;
-            newY += this.movementVector.y * forceEqualSpeed;
+            // EQUAL speed across PC and mobile platforms
+            const platformEqualSpeed = 2.0; // INCREASED from 1.2 for mobile parity
+            newX += this.movementVector.x * platformEqualSpeed;
+            newY += this.movementVector.y * platformEqualSpeed;
             moved = true;
             
             // Monitor movement speeds for both players
             if (Date.now() % 1000 < 50) { // Log every ~1 second
-                const localSpeed = Math.sqrt(this.movementVector.x ** 2 + this.movementVector.y ** 2) * forceEqualSpeed;
-                console.log(`🏃 LOCAL: ${localSpeed.toFixed(2)} px/frame | 🌐 REMOTE: synced via network`);
+                const localSpeed = Math.sqrt(this.movementVector.x ** 2 + this.movementVector.y ** 2) * platformEqualSpeed;
+                const inputType = this.isDragging ? "DRAG" : "JOYSTICK";
+                console.log(`🏃 LOCAL (${inputType}): ${localSpeed.toFixed(2)} px/frame | 🌐 REMOTE: synced`);
             }
             
             // Update facing direction
